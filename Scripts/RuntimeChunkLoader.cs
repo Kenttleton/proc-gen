@@ -15,6 +15,7 @@ public partial class RuntimeChunkLoader : Node3D
 	public Vector2I LastPlayerChunk = new Vector2I(int.MaxValue, int.MaxValue);
 	private float _updateTimer = 0.0f;
 	private ShaderMaterial _terrainMaterial;
+	private PropSpawner _propSpawner;
 
 	public RuntimeChunkLoader(WorldData worldData, Node3D player, int renderDistanceChunks, float updateInterval)
 	{
@@ -40,6 +41,10 @@ public partial class RuntimeChunkLoader : Node3D
 
 		var materialBuilder = new TerrainMaterialBuilder();
 		_terrainMaterial = materialBuilder.CreateTerrainMaterial();
+
+		_propSpawner = new PropSpawner();
+		_propSpawner.PropDefinitions = LoadPropDefinitions();
+		AddChild(_propSpawner);
 		// Initial load
 		UpdateVisibleChunks(true);
 	}
@@ -189,12 +194,22 @@ public partial class RuntimeChunkLoader : Node3D
 			CreateBossMarker(boss, staticBody);
 		}
 
+		var (propsNode, entities) = _propSpawner.SpawnPropsForChunk(
+			chunkData,
+			chunkCoord,
+			WorldData.ChunkSize,
+			WorldData.Seed
+		);
+
+		meshInstance.AddChild(propsNode);
+
 		_loadedChunks[chunkCoord] = new LoadedChunk
 		{
 			ChunkCoord = chunkCoord,
 			Body = staticBody,
 			MeshInstance = meshInstance,
-			CollisionShape = collisionShape
+			CollisionShape = collisionShape,
+			Harvestables = entities
 		};
 		//GD.Print($"[LOAD] Chunk {chunkCoord}: worldOffset = ({worldOffsetX}, {worldOffsetZ}), ChunkSize = ({WorldData.ChunkSize.X}, {WorldData.ChunkSize.Y})");
 	}
@@ -287,5 +302,18 @@ public partial class RuntimeChunkLoader : Node3D
 		}
 
 		return nearest;
+	}
+
+	private PropDefinition[] LoadPropDefinitions()
+	{
+		// Load from resources - you'll create these .tres files
+		return
+		[
+			GD.Load<PropDefinition>("res://Data/Props/OakTree.tres"),
+			GD.Load<PropDefinition>("res://Data/Props/PineTree.tres"),
+			GD.Load<PropDefinition>("res://Data/Props/GrassPatch.tres"),
+			GD.Load<PropDefinition>("res://Data/Props/Bush.tres"),
+			GD.Load<PropDefinition>("res://Data/Props/Rock.tres"),
+		];
 	}
 }

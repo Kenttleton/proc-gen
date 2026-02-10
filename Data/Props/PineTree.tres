@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="PropDefinition" format=3 uid="uid://cedbeou2tdabw"]
+
+[ext_resource type="Script" uid="uid://db4ed8t0hngv1" path="res://Scripts/PropDefinition.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+PropName = "OakTree"
+SpawnDensity = 0.05
+MinHeight = 0.0
+MaxHeight = 15.0
+MaxSlope = 0.3
+ResourceAmount = 20
+RespawnTime = 120.0

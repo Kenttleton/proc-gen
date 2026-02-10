@@ -36,6 +36,8 @@ public partial class Player : CharacterBody3D
 	private MeshInstance3D _playerMesh;
 	private Node3D _cameraTarget;
 	private float _cameraPitch = 0.0f;
+	private Area3D _bushDetector;
+	public bool IsHiddenInBushes = false;
 
 	[ExportGroup("Debug")]
 	[Export] public bool ShowDebugInfo = true;
@@ -43,6 +45,9 @@ public partial class Player : CharacterBody3D
 
 	public override void _Ready()
 	{
+		SetCollisionMaskValue(1, true);  // Detect terrain
+		SetCollisionMaskValue(2, true);  // Detect solid props (trees/rocks)
+		SetCollisionMaskValue(3, false); // Ignore partial props initially
 		if (ShowDebugInfo)
 			SetupDebugLabel();
 
@@ -309,6 +314,36 @@ public partial class Player : CharacterBody3D
 			PlayerNode.PlayState(CharacterRig.State.Jumping);
 			return;
 		}
+	}
+
+	private void SetupBushDetection()
+	{
+		_bushDetector = new Area3D();
+		_bushDetector.CollisionLayer = 0;
+		_bushDetector.CollisionMask = 4; // Partial props layer
+
+		var shape = new SphereShape3D();
+		shape.Radius = 0.5f;
+		var collision = new CollisionShape3D();
+		collision.Shape = shape;
+
+		_bushDetector.AddChild(collision);
+		AddChild(_bushDetector);
+
+		_bushDetector.BodyEntered += OnEnterBush;
+		_bushDetector.BodyExited += OnExitBush;
+	}
+
+	private void OnEnterBush(Node3D body)
+	{
+		GD.Print("Player is hidden in bushes!");
+		IsHiddenInBushes = true;
+	}
+
+	private void OnExitBush(Node3D body)
+	{
+		GD.Print("Player is no longer hidden in bushes!");
+		IsHiddenInBushes = false;
 	}
 
 	private void SetupDebugLabel()

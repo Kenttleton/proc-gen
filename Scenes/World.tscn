@@ -10,6 +10,7 @@
 script = ExtResource("1_j0p05")
 Player = NodePath("Player")
 PlacePlayerAtRandom = true
+RegenerateWorld = true
 ShowDebugInfo = true
 
 [node name="Player" type="CharacterBody3D" parent="." unique_id=889988968 node_paths=PackedStringArray("PlayerNode")]

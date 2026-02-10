@@ -6,7 +6,6 @@ public partial class HUD : Control
 	private CharacterBody3D _player;
 	private Camera3D _camera;
 	private RuntimeChunkLoader _chunkLoader;
-	private Control _root;
 	private Compass _compass;
 
 	public HUD(CharacterBody3D player, Camera3D camera, RuntimeChunkLoader chunkLoader)
@@ -21,25 +20,19 @@ public partial class HUD : Control
 		Canvas = new CanvasLayer();
 		AddChild(Canvas);
 
-		// _root = new Control();
-		// _root.AnchorLeft = 0;
-		// _root.AnchorRight = 1;
-		// _root.AnchorTop = 0;
-		// _root.AnchorBottom = 0;
-		// _root.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		// _root.CustomMinimumSize = new Vector2(0, 80);
-		// AddChild(_root);
-
-		_compass = new Compass(this, _camera);
-		AddChild(_compass);
+		_compass = new Compass(_camera);
+		Canvas.AddChild(_compass);
 	}
 
 	public override void _Process(double delta)
 	{
-		if (_compass != null && _chunkLoader != null)
+		if (_compass != null && _chunkLoader != null && _player != null)
 		{
 			var pois = _chunkLoader.GetPOI();
 			_compass.UpdatePOIs(_player.GlobalPosition, pois);
 		}
+		// GD.Print($"Player Position: {_player.GlobalPosition}");
+		// GD.Print($"POI: {_chunkLoader.GetPOI()}");
+		// GD.Print($"Compass: {_compass == null}");
 	}
 }
