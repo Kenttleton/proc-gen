@@ -20,9 +20,10 @@ public static class BinarySerializationHelper
         Vector3Array = 11,
         Vector2Array = 12,
         // Compressed versions for large arrays
-        CompressedFloatArray = 13,
-        CompressedVector3Array = 14,
-        CompressedIntArray = 15
+        CompressedIntArray = 13,
+        CompressedFloatArray = 14,
+        CompressedVector2Array = 15,
+        CompressedVector3Array = 16
     }
 
     // ============= LOW-LEVEL BYTE ARRAY CONVERSIONS =============

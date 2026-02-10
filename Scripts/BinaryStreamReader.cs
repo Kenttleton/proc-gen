@@ -140,6 +140,7 @@ public class BinaryStreamReader
 				}
 
 			case BinarySerializationHelper.SerializationType.Vector2Array:
+			case BinarySerializationHelper.SerializationType.CompressedVector2Array:
 				{
 					var countBytes = ReadBytes(4);
 					int count = BinarySerializationHelper.BytesToInt(countBytes);
@@ -148,6 +149,9 @@ public class BinaryStreamReader
 					int dataLength = BinarySerializationHelper.BytesToInt(lengthBytes);
 
 					var bytes = ReadBytes(dataLength);
+
+					if (type == BinarySerializationHelper.SerializationType.CompressedVector2Array) // ← Add decompression
+						bytes = BinarySerializationHelper.Decompress(bytes);
 
 					return BinarySerializationHelper.BytesToVector2Array(bytes, count);
 				}

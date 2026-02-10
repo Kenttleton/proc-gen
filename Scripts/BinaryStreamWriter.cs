@@ -155,7 +155,7 @@ public class BinaryStreamWriter
 		if (compress && bytes.Length > 1024)
 		{
 			bytes = BinarySerializationHelper.Compress(bytes);
-			_buffer.Add((byte)BinarySerializationHelper.SerializationType.Vector2Array);
+			_buffer.Add((byte)BinarySerializationHelper.SerializationType.CompressedVector2Array);
 		}
 		else
 		{
