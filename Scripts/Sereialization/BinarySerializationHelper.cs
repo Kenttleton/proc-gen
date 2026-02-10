@@ -7,26 +7,38 @@ public static class BinarySerializationHelper
 {
     public enum SerializationType : byte
     {
+        Bool = 0,
         Byte = 1,
         Int = 2,
         Float = 3,
-        Vector3 = 4,
-        Vector2I = 5,
-        Vector2 = 6,
-        String = 7,
-        ByteArray = 8,
-        IntArray = 9,
-        FloatArray = 10,
-        Vector3Array = 11,
-        Vector2Array = 12,
+        Double = 4,
+        Vector3 = 5,
+        Vector2I = 6,
+        Vector2 = 7,
+        String = 8,
+        ByteArray = 9,
+        IntArray = 10,
+        FloatArray = 11,
+        Vector3Array = 12,
+        Vector2Array = 13,
         // Compressed versions for large arrays
-        CompressedIntArray = 13,
-        CompressedFloatArray = 14,
-        CompressedVector2Array = 15,
-        CompressedVector3Array = 16
+        CompressedIntArray = 14,
+        CompressedFloatArray = 15,
+        CompressedVector2Array = 16,
+        CompressedVector3Array = 17
     }
 
     // ============= LOW-LEVEL BYTE ARRAY CONVERSIONS =============
+
+    public static byte BoolToByte(bool value)
+    {
+        return value ? (byte)1 : (byte)0;
+    }
+
+    public static bool ByteToBool(byte value)
+    {
+        return value != 0;
+    }
 
     public static byte[] IntToBytes(int value)
     {
@@ -46,6 +58,16 @@ public static class BinarySerializationHelper
     public static float BytesToFloat(byte[] bytes, int offset = 0)
     {
         return BitConverter.ToSingle(bytes, offset);
+    }
+
+    public static byte[] DoubleToBytes(double value)
+    {
+        return BitConverter.GetBytes(value);
+    }
+
+    public static double BytesToDouble(byte[] bytes, int offset = 0)
+    {
+        return BitConverter.ToDouble(bytes, offset);
     }
 
     public static byte[] Vector3ToBytes(Vector3 v)

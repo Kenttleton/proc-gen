@@ -162,10 +162,12 @@ public class BinaryStreamReader
 	}
 
 	// Typed read methods for convenience
+	public bool ReadBool() => BinarySerializationHelper.ByteToBool(ReadSingleByte());
 	public byte ReadSingleByte() => ((byte[])ReadNext())[0];
 	public byte[] ReadByteArray() => (byte[])ReadNext();
 	public int ReadInt() => (int)ReadNext();
 	public float ReadFloat() => (float)ReadNext();
+	public double ReadDouble() => (double)ReadNext();
 	public Vector3 ReadVector3() => (Vector3)ReadNext();
 	public Vector2 ReadVector2() => (Vector2)ReadNext();
 	public Vector2I ReadVector2I() => (Vector2I)ReadNext();

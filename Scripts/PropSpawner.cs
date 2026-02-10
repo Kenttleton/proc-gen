@@ -100,7 +100,7 @@ public partial class PropSpawner : Node
 			}
 		}
 
-		// Create MultiMesh instances
+		// Create MultiMesh instances with LOD
 		foreach (var kvp in propGroups)
 		{
 			var propDef = kvp.Key;
@@ -110,7 +110,12 @@ public partial class PropSpawner : Node
 				continue;
 
 			var multiMeshInstance = CreateMultiMeshInstanceWithLOD(propDef, transforms);
-			visualRoot.AddChild(multiMeshInstance);
+
+			// Check if creation was successful (null if mesh was missing)
+			if (multiMeshInstance != null)
+			{
+				visualRoot.AddChild(multiMeshInstance);
+			}
 		}
 
 		return (visualRoot, harvestableEntities);
@@ -201,6 +206,12 @@ public partial class PropSpawner : Node
 	PropDefinition propDef,
 	List<Transform3D> transforms)
 	{
+		if (propDef.Mesh == null)
+		{
+			GD.PrintErr($"PropDefinition '{propDef.PropName}' has no mesh assigned! Skipping.");
+			return null;
+		}
+
 		var multiMesh = new MultiMesh();
 		multiMesh.TransformFormat = MultiMesh.TransformFormatEnum.Transform3D;
 		multiMesh.Mesh = propDef.Mesh;
@@ -213,27 +224,38 @@ public partial class PropSpawner : Node
 
 		var instance = new MultiMeshInstance3D();
 		instance.Multimesh = multiMesh;
+		instance.Name = $"MultiMesh_{propDef.PropName}";
+		instance.CastShadow = GeometryInstance3D.ShadowCastingSetting.On;
+
 		if (propDef.AffectedByWind)
 		{
 			var windMaterial = new ShaderMaterial();
-			windMaterial.Shader = GD.Load<Shader>("res://Shaders/vegetation_wind.gdshader");
-			windMaterial.SetShaderParameter("sway_stiffness", propDef.SwayStiffness);
+			var shader = GD.Load<Shader>("res://Shaders/vegetation_wind.gdshader");
 
-			// Copy textures from original material if it has any
-			if (propDef.Material is StandardMaterial3D stdMat)
+			if (shader == null)
 			{
-				windMaterial.SetShaderParameter("albedo_texture", stdMat.AlbedoTexture);
+				GD.PrintErr("Wind shader not found! Using standard material instead.");
+				instance.MaterialOverride = propDef.Material;
 			}
+			else
+			{
+				windMaterial.Shader = shader;
+				windMaterial.SetShaderParameter("sway_stiffness", propDef.SwayStiffness);
 
-			instance.MaterialOverride = windMaterial;
-			instance.AddToGroup("vegetation"); // For wind manager to find
+				// Copy textures from original material if it has any
+				if (propDef.Material is StandardMaterial3D stdMat)
+				{
+					windMaterial.SetShaderParameter("albedo_texture", stdMat.AlbedoTexture);
+				}
+
+				instance.MaterialOverride = windMaterial;
+				instance.AddToGroup("vegetation");
+			}
 		}
 		else
 		{
 			instance.MaterialOverride = propDef.Material;
 		}
-		instance.CastShadow = GeometryInstance3D.ShadowCastingSetting.On;
-		instance.Name = $"MultiMesh_{propDef.PropName}";
 
 		// Enable Godot's built-in visibility range (LOD)
 		instance.VisibilityRangeBegin = 0.0f;
@@ -297,14 +319,4 @@ public partial class PropSpawner : Node
 			staticBody.AddChild(shape);
 		}
 	}
-}
-
-// Data structure for tracking harvestable resources
-public class HarvestableEntity
-{
-	public string PropName;
-	public Vector3 Position;
-	public Vector2I ChunkCoord;
-	public bool IsActive;
-	public double RespawnTime;
 }

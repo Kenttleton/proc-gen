@@ -306,14 +306,94 @@ public partial class RuntimeChunkLoader : Node3D
 
 	private PropDefinition[] LoadPropDefinitions()
 	{
-		// Load from resources - you'll create these .tres files
-		return
-		[
-			GD.Load<PropDefinition>("res://Data/Props/OakTree.tres"),
-			GD.Load<PropDefinition>("res://Data/Props/PineTree.tres"),
-			GD.Load<PropDefinition>("res://Data/Props/GrassPatch.tres"),
-			GD.Load<PropDefinition>("res://Data/Props/Bush.tres"),
-			GD.Load<PropDefinition>("res://Data/Props/Rock.tres"),
-		];
+		// For now, create temporary prop definitions with generated meshes
+		// Later you'll replace this with .tres file loading
+
+		var treeDefinition = new PropDefinition
+		{
+			PropName = "OakTree",
+			Mesh = PropMeshGenerator.CreateTreeMesh(), // Generate mesh immediately
+			Material = CreateSimpleMaterial(new Color(0.3f, 0.5f, 0.2f)), // Green
+			SpawnDensity = 0.05f,
+			MinHeight = 0.0f,
+			MaxHeight = 15.0f,
+			MaxSlope = 0.3f,
+			ScaleRange = new Vector2(0.9f, 1.3f),
+			RandomRotation = true,
+			CollisionType = PropCollisionType.Solid,
+			Harvestable = true,
+			AffectedByWind = true,
+			SwayStiffness = 0.7f,
+			ResourceType = "Wood",
+			ResourceAmount = 20,
+			RespawnTime = 120.0f
+		};
+
+		var rockDefinition = new PropDefinition
+		{
+			PropName = "Rock",
+			Mesh = PropMeshGenerator.CreateRockMesh(),
+			Material = CreateSimpleMaterial(new Color(0.5f, 0.5f, 0.5f)), // Gray
+			SpawnDensity = 0.03f,
+			MinHeight = -5.0f,
+			MaxHeight = 20.0f,
+			MaxSlope = 0.6f,
+			ScaleRange = new Vector2(0.8f, 1.4f),
+			RandomRotation = true,
+			CollisionType = PropCollisionType.Solid,
+			Harvestable = true,
+			AffectedByWind = false,
+			ResourceType = "Stone",
+			ResourceAmount = 15,
+			RespawnTime = 180.0f
+		};
+
+		var bushDefinition = new PropDefinition
+		{
+			PropName = "Bush",
+			Mesh = PropMeshGenerator.CreateBushMesh(),
+			Material = CreateSimpleMaterial(new Color(0.2f, 0.6f, 0.2f)), // Darker green
+			SpawnDensity = 0.08f,
+			MinHeight = 0.0f,
+			MaxHeight = 12.0f,
+			MaxSlope = 0.4f,
+			ScaleRange = new Vector2(0.7f, 1.1f),
+			RandomRotation = true,
+			CollisionType = PropCollisionType.Partial,
+			Harvestable = true,
+			AffectedByWind = true,
+			SwayStiffness = 0.3f,
+			ResourceType = "Berries",
+			ResourceAmount = 5,
+			RespawnTime = 60.0f
+		};
+
+		var grassDefinition = new PropDefinition
+		{
+			PropName = "Grass",
+			Mesh = PropMeshGenerator.CreateGrassPatch(),
+			Material = CreateSimpleMaterial(new Color(0.4f, 0.7f, 0.3f)), // Bright green
+			SpawnDensity = 0.2f,
+			MinHeight = -2.0f,
+			MaxHeight = 8.0f,
+			MaxSlope = 0.5f,
+			ScaleRange = new Vector2(0.9f, 1.2f),
+			RandomRotation = true,
+			CollisionType = PropCollisionType.None,
+			Harvestable = false,
+			AffectedByWind = true,
+			SwayStiffness = 0.1f
+		};
+
+		return new PropDefinition[] { treeDefinition, rockDefinition, bushDefinition, grassDefinition };
+	}
+
+	private StandardMaterial3D CreateSimpleMaterial(Color color)
+	{
+		var material = new StandardMaterial3D();
+		material.AlbedoColor = color;
+		material.Roughness = 0.8f;
+		material.ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded; // For low-poly look
+		return material;
 	}
 }

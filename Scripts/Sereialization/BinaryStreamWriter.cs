@@ -9,6 +9,12 @@ public class BinaryStreamWriter
 	public byte[] GetBytes() => _buffer.ToArray();
 	public int Length => _buffer.Count;
 
+	public void WriteBool(bool value)
+	{
+		_buffer.Add((byte)BinarySerializationHelper.SerializationType.Bool);
+		_buffer.Add(BinarySerializationHelper.BoolToByte(value));
+	}
+
 	public void WriteByte(byte value)
 	{
 		_buffer.Add((byte)BinarySerializationHelper.SerializationType.Byte);
@@ -36,6 +42,14 @@ public class BinaryStreamWriter
 	{
 		_buffer.Add((byte)BinarySerializationHelper.SerializationType.Float);
 		var bytes = BinarySerializationHelper.FloatToBytes(value);
+		_buffer.Add((byte)bytes.Length);
+		_buffer.AddRange(bytes);
+	}
+
+	public void WriteDouble(double value)
+	{
+		_buffer.Add((byte)BinarySerializationHelper.SerializationType.Double);
+		var bytes = BinarySerializationHelper.DoubleToBytes(value);
 		_buffer.Add((byte)bytes.Length);
 		_buffer.AddRange(bytes);
 	}

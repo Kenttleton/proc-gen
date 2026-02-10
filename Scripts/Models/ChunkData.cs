@@ -15,6 +15,7 @@ public class ChunkData
     // Chunk feature data
     public List<DungeonEntrance> DungeonEntrances = new();
     public List<BossSpawn> BossSpawns = new();
+    public List<HarvestableEntity> Harvestables = new();
 
     // Write to file
     public byte[] Serialize()
@@ -43,6 +44,15 @@ public class ChunkData
             writer.WriteVector3(boss.Position);
             writer.WriteByte((byte)boss.BossType);
             writer.WriteByte((byte)boss.Biome);
+        }
+
+        writer.WriteInt(Harvestables.Count);
+        foreach (var harvestable in Harvestables)
+        {
+            writer.WriteString(harvestable.PropName);
+            writer.WriteVector3(harvestable.Position);
+            writer.WriteBool(harvestable.IsActive);
+            writer.WriteDouble(harvestable.RespawnTime);
         }
 
         return writer.GetBytes();
@@ -80,6 +90,18 @@ public class ChunkData
                 (BossType)reader.ReadSingleByte(),
                 (BiomeType)reader.ReadSingleByte()
             ));
+        }
+
+        int harvestableCount = reader.ReadInt();
+        for (int i = 0; i < harvestableCount; i++)
+        {
+            chunk.Harvestables.Add(new HarvestableEntity
+            {
+                PropName = reader.ReadString(),
+                Position = reader.ReadVector3(),
+                IsActive = reader.ReadBool(),
+                RespawnTime = reader.ReadDouble()
+            });
         }
 
         return chunk;
