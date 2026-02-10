@@ -30,16 +30,13 @@ public class WorldData
             writer.WriteByteArray(chunkData);
             count++;
         }
-        var bytes = writer.GetBytes();
-        file.Store32((uint)bytes.Length);
-        var success = file.StoreBuffer(bytes);
+        var success = file.StoreBuffer(writer.GetBytes());
         GD.Print($"Serialized {count}/{Chunks.Count} chunks {(success ? "successfully" : "unsuccessfully")}");
     }
 
     public static WorldData Deserialize(FileAccess file)
     {
-        var fileSize = (int)file.Get32();
-
+        var fileSize = (int)(file.GetLength() - file.GetPosition());
         var reader = new BinaryStreamReader(file.GetBuffer(fileSize));
         var worldData = new WorldData
         {

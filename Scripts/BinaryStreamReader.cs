@@ -84,7 +84,8 @@ public class BinaryStreamReader
 
 			case BinarySerializationHelper.SerializationType.ByteArray:
 				{
-					byte length = _data[_position++];
+					var lengthBytes = ReadBytes(4);
+					int length = BinarySerializationHelper.BytesToInt(lengthBytes);
 					return ReadBytes(length);
 				}
 			case BinarySerializationHelper.SerializationType.FloatArray:

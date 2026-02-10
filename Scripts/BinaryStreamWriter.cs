@@ -18,7 +18,8 @@ public class BinaryStreamWriter
 	public void WriteByteArray(byte[] bytes)
 	{
 		_buffer.Add((byte)BinarySerializationHelper.SerializationType.ByteArray);
-		_buffer.Add((byte)bytes.Length);
+		var lengthBytes = BinarySerializationHelper.IntToBytes(bytes.Length);
+		_buffer.AddRange(lengthBytes);
 		_buffer.AddRange(bytes);
 	}
 
