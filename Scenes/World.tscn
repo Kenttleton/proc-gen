@@ -1,0 +1,28 @@
+[gd_scene format=3 uid="uid://b75gokgrgss6h"]
+
+[ext_resource type="Script" uid="uid://cxvoeu7gw2xkc" path="res://Scripts/World.cs" id="1_j0p05"]
+[ext_resource type="Script" uid="uid://dckt0qbbwylvd" path="res://Scripts/Player.cs" id="2_j0p05"]
+[ext_resource type="PackedScene" uid="uid://cbdh3u1n160kn" path="res://Scenes/Knight.tscn" id="3_5nsto"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_5nsto"]
+
+[node name="World" type="Node3D" unique_id=1972273423 node_paths=PackedStringArray("Player")]
+script = ExtResource("1_j0p05")
+Player = NodePath("Player")
+PlacePlayerAtRandom = true
+ShowDebugInfo = true
+
+[node name="Player" type="CharacterBody3D" parent="." unique_id=889988968 node_paths=PackedStringArray("PlayerNode")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5727551, 0)
+floor_max_angle = 1.399754
+script = ExtResource("2_j0p05")
+WalkSpeed = 6.0
+SprintSpeed = 10.0
+JumpVelocity = 11.0
+PlayerNode = NodePath("Knight")
+
+[node name="Knight" parent="Player" unique_id=799545041 instance=ExtResource("3_5nsto")]
+BodyColliderPath = NodePath("../BodyCollider")
+
+[node name="BodyCollider" type="CollisionShape3D" parent="Player" unique_id=1607737042]
+shape = SubResource("CapsuleShape3D_5nsto")

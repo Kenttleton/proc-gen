@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="CharacterLoadout" format=3 uid="uid://bv84g2tj8ui0q"]
+
+[ext_resource type="Script" uid="uid://ddnj3w8s0c4ui" path="res://Scripts/CharacterLoadout.cs" id="1_0ak80"]
+
+[resource]
+script = ExtResource("1_0ak80")
+Name = "Basic"
+HeadItem = "Knight_Helmet"
+RightHandItem = "1H_Sword"
+metadata/_custom_type_script = "uid://ddnj3w8s0c4ui"
