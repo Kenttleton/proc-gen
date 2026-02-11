@@ -15,7 +15,7 @@ public class ChunkData
     // Chunk feature data
     public List<DungeonEntrance> DungeonEntrances = new();
     public List<BossSpawn> BossSpawns = new();
-    public List<HarvestableEntity> Harvestables = new();
+    public List<PropInstanceData> Props = new();
 
     // Write to file
     public byte[] Serialize()
@@ -46,13 +46,15 @@ public class ChunkData
             writer.WriteByte((byte)boss.Biome);
         }
 
-        writer.WriteInt(Harvestables.Count);
-        foreach (var harvestable in Harvestables)
+        writer.WriteInt(Props.Count);
+        foreach (var prop in Props)
         {
-            writer.WriteString(harvestable.PropName);
-            writer.WriteVector3(harvestable.Position);
-            writer.WriteBool(harvestable.IsActive);
-            writer.WriteDouble(harvestable.RespawnTime);
+            writer.WriteString(prop.PropName);
+            writer.WriteVector3(prop.Position);
+            writer.WriteVector3(prop.Scale);
+            writer.WriteFloat(prop.RotationY);
+            writer.WriteBool(prop.IsActive);
+            writer.WriteDouble(prop.RespawnTime);
         }
 
         return writer.GetBytes();
@@ -92,13 +94,15 @@ public class ChunkData
             ));
         }
 
-        int harvestableCount = reader.ReadInt();
-        for (int i = 0; i < harvestableCount; i++)
+        int propCount = reader.ReadInt();
+        for (int i = 0; i < propCount; i++)
         {
-            chunk.Harvestables.Add(new HarvestableEntity
+            chunk.Props.Add(new PropInstanceData
             {
                 PropName = reader.ReadString(),
                 Position = reader.ReadVector3(),
+                Scale = reader.ReadVector3(),
+                RotationY = reader.ReadFloat(),
                 IsActive = reader.ReadBool(),
                 RespawnTime = reader.ReadDouble()
             });

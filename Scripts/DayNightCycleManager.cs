@@ -1,5 +1,4 @@
 using Godot;
-using System;
 
 public partial class DayNightCycleManager : Node3D
 {
@@ -25,19 +24,8 @@ public partial class DayNightCycleManager : Node3D
 	public override void _Ready()
 	{
 		_timeOfDay = StartTimeOfDay;
-
-		if (WorldEnvironment?.Environment?.Sky?.SkyMaterial is ShaderMaterial skyMat)
-		{
-			_skyMaterial = skyMat;
-
-			// Set up star texture
-			var starTexture = StarTextureGenerator.GenerateStarTexture();
-			_skyMaterial.SetShaderParameter("stars_texture", starTexture);
-		}
-
-		// Find weather system if it exists
-		_weatherSystem = GetNodeOrNull<ShaderWeatherSystem>("../ShaderWeatherSystem");
-
+		SetupEnvironmentAndSky();
+		SetupSun();
 		UpdateTimeOfDay(0); // Initial update
 
 		GD.Print($"Day/Night cycle started at time {_timeOfDay:F2}");
@@ -59,6 +47,55 @@ public partial class DayNightCycleManager : Node3D
 		}
 
 		UpdateTimeOfDay((float)delta);
+	}
+
+	public void SetWeatherSystem(ShaderWeatherSystem weatherSystem)
+	{
+		_weatherSystem = weatherSystem;
+		GD.Print("Weather system linked to Day/Night cycle");
+	}
+
+	private void SetupEnvironmentAndSky()
+	{
+		// Create WorldEnvironment
+		WorldEnvironment = new WorldEnvironment();
+		var environment = new Environment();
+
+		// Use custom sky shader
+		var sky = new Sky();
+		_skyMaterial = new ShaderMaterial();
+		_skyMaterial.Shader = GD.Load<Shader>("res://Shaders/dynamic_sky.gdshader");
+
+		// Set up star texture
+		var starTexture = StarTextureGenerator.GenerateStarTexture();
+		_skyMaterial.SetShaderParameter("stars_texture", starTexture);
+
+		sky.SkyMaterial = _skyMaterial;
+
+		environment.BackgroundMode = Environment.BGMode.Sky;
+		environment.Sky = sky;
+		environment.AmbientLightSource = Environment.AmbientSource.Sky;
+
+		// FIX #5: Set reasonable default ambient light
+		environment.AmbientLightColor = new Color(0.7f, 0.8f, 0.9f);
+		environment.AmbientLightEnergy = 0.3f;
+
+		WorldEnvironment.Environment = environment;
+		AddChild(WorldEnvironment);
+
+		GD.Print("WorldEnvironment and sky created");
+	}
+
+	private void SetupSun()
+	{
+		// Directional light (sun)
+		Sun = new DirectionalLight3D();
+		Sun.LightEnergy = 1.0f;
+		Sun.LightColor = Colors.White;
+		Sun.ShadowEnabled = true;
+		AddChild(Sun);
+
+		GD.Print("DirectionalLight (Sun) created");
 	}
 
 	private void UpdateTimeOfDay(float delta)

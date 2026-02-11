@@ -35,6 +35,8 @@ public partial class ShaderWeatherSystem : Node3D
 	public override void _Ready()
 	{
 		SetupShaderWeather();
+		// TODO: Change later. For debugging weather
+		SetWeather(WeatherType.Rainy);
 	}
 
 	private void SetupShaderWeather()
@@ -133,11 +135,11 @@ public partial class ShaderWeatherSystem : Node3D
 		_fogIntensity = Mathf.Lerp(_fogIntensity, _targetFogIntensity, WeatherTransitionSpeed * dt);
 		_cloudCoverage = Mathf.Lerp(_cloudCoverage, _targetCloudCoverage, WeatherTransitionSpeed * dt);
 
-		if (_cloudMaterial != null && _dayNightCycleManager != null)
-		{
-			_cloudMaterial.SetShaderParameter("cloud_coverage", _cloudCoverage);
-			_cloudMaterial.SetShaderParameter("time_of_day", _dayNightCycleManager.TimeOfDay);
-		}
+		// if (_cloudMaterial != null && _dayNightCycleManager != null)
+		// {
+		// 	_cloudMaterial.SetShaderParameter("cloud_coverage", _cloudCoverage);
+		// 	_cloudMaterial.SetShaderParameter("time_of_day", _dayNightCycleManager.TimeOfDay);
+		// }
 
 		// Update shader parameters
 		UpdateShaderParameters();
@@ -147,6 +149,11 @@ public partial class ShaderWeatherSystem : Node3D
 	{
 		Vector3 playerPos = Player.GlobalPosition;
 
+		if (_rainMesh != null)
+		{
+			_rainMesh.GlobalPosition = new Vector3(playerPos.X, playerPos.Y + 15, playerPos.Z);
+		}
+
 		// Rain follows player
 		if (_rainMaterial != null)
 		{
@@ -154,7 +161,10 @@ public partial class ShaderWeatherSystem : Node3D
 		}
 
 		// Fog volume centered on player
-		_fogVolume.GlobalPosition = new Vector3(playerPos.X, 25, playerPos.Z);
+		if (_fogVolume != null)
+		{
+			_fogVolume.GlobalPosition = new Vector3(playerPos.X, 25, playerPos.Z);
+		}
 
 		// Clouds don't need to follow (they're huge)
 	}
@@ -177,16 +187,16 @@ public partial class ShaderWeatherSystem : Node3D
 		if (_cloudMaterial != null)
 		{
 			_cloudMaterial.SetShaderParameter("cloud_coverage", _cloudCoverage);
+			if (_dayNightCycleManager != null)
+			{
+				_cloudMaterial.SetShaderParameter("time_of_day", _dayNightCycleManager.TimeOfDay);
+			}
 		}
 
 		// Update sky shader with weather darkness
-		if (_dayNightCycleManager != null)
+		if (_dayNightCycleManager?.WorldEnvironment?.Environment?.Sky?.SkyMaterial is ShaderMaterial skyMaterial)
 		{
-			var skyMaterial = _worldEnvironment?.Environment?.Sky?.SkyMaterial as ShaderMaterial;
-			if (skyMaterial != null)
-			{
-				skyMaterial.SetShaderParameter("weather_darkness", WeatherDarkness);
-			}
+			skyMaterial.SetShaderParameter("weather_darkness", WeatherDarkness);
 		}
 	}
 

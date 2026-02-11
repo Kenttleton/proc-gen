@@ -194,12 +194,19 @@ public partial class RuntimeChunkLoader : Node3D
 			CreateBossMarker(boss, staticBody);
 		}
 
-		var (propsNode, entities) = _propSpawner.SpawnPropsForChunk(
+		bool hasExistingProps = chunkData.Props.Count > 0;
+		var (propsNode, props) = _propSpawner.SpawnPropsForChunk(
 			chunkData,
 			chunkCoord,
 			WorldData.ChunkSize,
-			WorldData.Seed
+			WorldData.Seed,
+			hasExistingProps
 		);
+
+		if (!hasExistingProps)
+		{
+			chunkData.Props = props;
+		}
 
 		meshInstance.AddChild(propsNode);
 
@@ -209,7 +216,7 @@ public partial class RuntimeChunkLoader : Node3D
 			Body = staticBody,
 			MeshInstance = meshInstance,
 			CollisionShape = collisionShape,
-			Harvestables = entities
+			Props = props
 		};
 		//GD.Print($"[LOAD] Chunk {chunkCoord}: worldOffset = ({worldOffsetX}, {worldOffsetZ}), ChunkSize = ({WorldData.ChunkSize.X}, {WorldData.ChunkSize.Y})");
 	}
@@ -276,32 +283,35 @@ public partial class RuntimeChunkLoader : Node3D
 		GD.Print($"Boss marker created at {boss.Position}");
 	}
 
-	public Vector2[] GetPOI()
+	public (Vector2[] positions, string[] types) GetPOI()
 	{
 		Vector2[] nearest = [];
+		string[] types = [];
 
 		foreach (var chunk in _loadedChunks.Values)
 		{
 			if (!WorldData.Chunks.TryGetValue(chunk.ChunkCoord, out var chunkData))
 			{
 				GD.PrintErr($"Chunk {chunk.ChunkCoord} not found in world data!");
-				return nearest;
+				return (nearest, types);
 			}
 
 			foreach (var dungeon in chunkData.DungeonEntrances)
 			{
 				var position = new Vector2(dungeon.Position.X, dungeon.Position.Z);
 				nearest = nearest.Append(position).ToArray();
+				types = types.Append("dungeon").ToArray();
 			}
 
 			foreach (var boss in chunkData.BossSpawns)
 			{
 				var position = new Vector2(boss.Position.X, boss.Position.Z);
 				nearest = nearest.Append(position).ToArray();
+				types = types.Append("boss").ToArray();
 			}
 		}
 
-		return nearest;
+		return (nearest, types);
 	}
 
 	private PropDefinition[] LoadPropDefinitions()

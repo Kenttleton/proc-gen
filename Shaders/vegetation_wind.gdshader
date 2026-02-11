@@ -8,7 +8,9 @@ uniform vec2 wind_direction = vec2(1.0, 0.5);
 uniform float wind_turbulence = 0.5;
 
 // Per-prop parameters
+uniform vec4 albedo_color : source_color = vec4(0.5, 0.8, 0.3, 1.0); // Default green
 uniform sampler2D albedo_texture : source_color;
+uniform bool use_texture = false;
 uniform float sway_stiffness = 0.5; // 0 = grass (very bendy), 1 = tree (stiff)
 
 varying vec3 world_vertex;
@@ -40,10 +42,18 @@ void vertex() {
 }
 
 void fragment() {
-    vec4 albedo = texture(albedo_texture, UV);
+    vec4 albedo;
+    
+    if (use_texture) {
+        albedo = texture(albedo_texture, UV);
+    } else {
+        albedo = albedo_color;
+    }
+    
     ALBEDO = albedo.rgb;
     ALPHA = albedo.a;
     
-    // Simple lighting
+    // Simple lighting for low-poly style
     ROUGHNESS = 0.8;
+    METALLIC = 0.0;
 }

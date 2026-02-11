@@ -90,12 +90,22 @@ public partial class World : Node3D
 		dayNightCycleManager.StartTimeOfDay = 0.25f; // Start at dawn
 		AddChild(dayNightCycleManager);
 
+		GD.Print("DayNightCycleManager created");
+
 		var shaderWeatherSystem = new ShaderWeatherSystem(Player, dayNightCycleManager);
 		AddChild(shaderWeatherSystem);
 
-		var HUD = new HUD(Player, FindNodeRecursive<Camera3D>(Player), _chunkLoader);
+		GD.Print("ShaderWeatherSystem created");
+
+		dayNightCycleManager.SetWeatherSystem(shaderWeatherSystem);
+
+		var HUD = new HUD(Player, FindNodeRecursive<Camera3D>(Player), _chunkLoader, dayNightCycleManager, shaderWeatherSystem);
 		AddChild(HUD);
 
+		GD.Print($"=== World Initialization Complete ===");
+		GD.Print($"  Time: {dayNightCycleManager.GetTimeString()}, Weather initialized.");
+		GD.Print($"  Total World Chunks: {_generator.WorldData?.Chunks.Count ?? 0}");
+		GD.Print($"  World Size: {_generator.WorldData?.WorldSizeChunks.X ?? 0}x{_generator.WorldData?.WorldSizeChunks.Y ?? 0}");
 		_debugUI = new DebugUI();
 		_debugUI.CreateDebugUI(_debugLabel, HUD.Canvas);
 	}
@@ -105,11 +115,8 @@ public partial class World : Node3D
 	{
 		if (_debugLabel != null && _chunkLoader != null)
 		{
-			var worldData = _generator.WorldData;
 			_debugLabel.Text = $"Player World Position: {Player.Position.Round()}\n" +
-								$"Player Chunk: {_chunkLoader.LastPlayerChunk}\nChunks Loaded: {_chunkLoader.Count}\n" +
-							  	$"Total World Chunks: {worldData?.Chunks.Count ?? 0}\n" +
-							  	$"World Size: {worldData?.WorldSizeChunks.X ?? 0}x{worldData?.WorldSizeChunks.Y ?? 0}";
+								$"Player Chunk: {_chunkLoader.LastPlayerChunk}\nChunks Loaded: {_chunkLoader.Count}\n";
 		}
 	}
 

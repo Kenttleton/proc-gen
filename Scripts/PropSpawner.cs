@@ -28,37 +28,49 @@ public partial class PropSpawner : Node
 	/// <summary>
 	/// Spawns props for a chunk and returns visual nodes + harvestable entity data
 	/// </summary>
-	public (Node3D visualNode, List<HarvestableEntity> entities) SpawnPropsForChunk(
-		ChunkData chunkData,
-		Vector2I chunkCoord,
-		Vector2I chunkSize,
-		int seed)
+	public (Node3D visualNode, List<PropInstanceData> props) SpawnPropsForChunk(
+	ChunkData chunkData,
+	Vector2I chunkCoord,
+	Vector2I chunkSize,
+	int seed,
+	bool useExistingData = false)
 	{
-		var random = new Random(HashCode.Combine(seed, chunkCoord.X, chunkCoord.Y));
 		var visualRoot = new Node3D();
 		visualRoot.Name = $"Props_Chunk_{chunkCoord.X}_{chunkCoord.Y}";
 
 		// Group props by definition for MultiMesh batching
 		var propGroups = new Dictionary<PropDefinition, List<Transform3D>>();
-		var harvestableEntities = new List<HarvestableEntity>();
+		var props = new List<PropInstanceData>();
+
+		if (useExistingData && chunkData.Props.Count > 0)
+		{
+			return LoadPropsFromData(chunkData, visualRoot);
+		}
+
+		var random = new Random(HashCode.Combine(seed, chunkCoord.X, chunkCoord.Y));
 		_largePropPositions.Clear();
 
 		int worldOffsetX = chunkCoord.X * (chunkSize.X - 1);
 		int worldOffsetZ = chunkCoord.Y * (chunkSize.Y - 1);
 
 		var exclusionZones = BuildExclusionZones(chunkData, worldOffsetX, worldOffsetZ);
+		int propSpacing = Math.Max(1, (chunkSize.X - 1) / (int)Math.Sqrt(MaxPropsPerChunk));
 
-		// Sample terrain vertices for prop placement
-		for (int z = 0; z < chunkSize.Y - 1; z += 2) // Skip every other for performance
+		for (int z = 0; z < chunkSize.Y - 1; z += propSpacing) // Skip every other for performance
 		{
-			for (int x = 0; x < chunkSize.X - 1; x += 2)
+			for (int x = 0; x < chunkSize.X - 1; x += propSpacing)
 			{
 				int index = z * chunkSize.X + x;
+
+				// Add random offset within the spacing grid to avoid uniform patterns
+				float randomOffsetX = (float)(random.NextDouble() * 2.0 - 1.0) * (propSpacing * 0.4f);
+				float randomOffsetZ = (float)(random.NextDouble() * 2.0 - 1.0) * (propSpacing * 0.4f);
+
 				float height = chunkData.HeightData[index];
 				Vector3 worldPos = new Vector3(
-					worldOffsetX + x,
+					worldOffsetX + x + randomOffsetX,
 					height,
-					worldOffsetZ + z
+					worldOffsetZ + z + randomOffsetZ
 				);
 
 				if (IsInExclusionZone(worldPos, exclusionZones))
@@ -82,20 +94,19 @@ public partial class PropSpawner : Node
 
 					propGroups[propDef].Add(transform);
 
+					props.Add(new PropInstanceData
+					{
+						PropName = propDef.PropName,
+						Position = worldPos,
+						Scale = transform.Basis.Scale,
+						RotationY = transform.Basis.GetEuler().Y,
+						IsActive = true
+					});
+
 					if (propDef.CollisionType == PropCollisionType.Solid)
 						_largePropPositions.Add(worldPos);
 
-					// Track harvestable props
-					if (propDef.Harvestable)
-					{
-						harvestableEntities.Add(new HarvestableEntity
-						{
-							PropName = propDef.PropName,
-							Position = worldPos,
-							ChunkCoord = chunkCoord,
-							IsActive = true
-						});
-					}
+					break; // Only spawn one prop per location
 				}
 			}
 		}
@@ -118,7 +129,7 @@ public partial class PropSpawner : Node
 			}
 		}
 
-		return (visualRoot, harvestableEntities);
+		return (visualRoot, props);
 	}
 
 	private List<(Vector3 center, float radius)> BuildExclusionZones(
@@ -141,6 +152,66 @@ public partial class PropSpawner : Node
 		}
 
 		return zones;
+	}
+
+	private (Node3D visualNode, List<PropInstanceData> props) LoadPropsFromData(
+	ChunkData chunkData,
+	Node3D visualRoot)
+	{
+		var propGroups = new Dictionary<PropDefinition, List<Transform3D>>();
+		var props = new List<PropInstanceData>();
+
+		foreach (var propData in chunkData.Props)
+		{
+			// Find the prop definition
+			if (!_propCatalog.TryGetValue(propData.PropName, out var propDef))
+				continue;
+
+			// Skip inactive (harvested) props
+			if (!propData.IsActive)
+				continue;
+
+			// Recreate transform
+			var transform = Transform3D.Identity;
+			transform.Origin = propData.Position;
+			transform.Basis = transform.Basis.Scaled(propData.Scale);
+			transform.Basis = transform.Basis.Rotated(Vector3.Up, propData.RotationY);
+
+			if (!propGroups.ContainsKey(propDef))
+				propGroups[propDef] = new List<Transform3D>();
+
+			propGroups[propDef].Add(transform);
+
+			if (propDef.Harvestable)
+			{
+				props.Add(new PropInstanceData
+				{
+					PropName = propDef.PropName,
+					Position = propData.Position,
+					IsActive = propData.IsActive,
+					RespawnTime = propData.RespawnTime,
+				});
+			}
+		}
+
+		// Create MultiMesh instances
+		foreach (var kvp in propGroups)
+		{
+			var propDef = kvp.Key;
+			var transforms = kvp.Value;
+
+			if (transforms.Count == 0)
+				continue;
+
+			var multiMeshInstance = CreateMultiMeshInstanceWithLOD(propDef, transforms);
+
+			if (multiMeshInstance != null)
+			{
+				visualRoot.AddChild(multiMeshInstance);
+			}
+		}
+
+		return (visualRoot, props);
 	}
 
 	private bool IsInExclusionZone(Vector3 position, List<(Vector3 center, float radius)> zones)
@@ -242,10 +313,26 @@ public partial class PropSpawner : Node
 				windMaterial.Shader = shader;
 				windMaterial.SetShaderParameter("sway_stiffness", propDef.SwayStiffness);
 
-				// Copy textures from original material if it has any
+				// Set color/texture parameters
 				if (propDef.Material is StandardMaterial3D stdMat)
 				{
-					windMaterial.SetShaderParameter("albedo_texture", stdMat.AlbedoTexture);
+					if (stdMat.AlbedoTexture != null)
+					{
+						windMaterial.SetShaderParameter("albedo_texture", stdMat.AlbedoTexture);
+						windMaterial.SetShaderParameter("use_texture", true);
+					}
+					else
+					{
+						// Use the color from the material
+						windMaterial.SetShaderParameter("albedo_color", stdMat.AlbedoColor);
+						windMaterial.SetShaderParameter("use_texture", false);
+					}
+				}
+				else
+				{
+					// Fallback to a default color if material isn't StandardMaterial3D
+					windMaterial.SetShaderParameter("albedo_color", new Color(0.5f, 0.8f, 0.3f));
+					windMaterial.SetShaderParameter("use_texture", false);
 				}
 
 				instance.MaterialOverride = windMaterial;

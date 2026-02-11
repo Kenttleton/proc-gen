@@ -9,9 +9,12 @@ public partial class CharacterRig : Node3D
     [Signal] public delegate void AttackHitEventHandler();
     [Signal] public delegate void FootstepEventHandler();
     [Signal] public delegate void DeathEventHandler();
+    [Signal] public delegate void HurtboxHitEventHandler(Area3D hitbox, BodyPart part, float damageMultiplier);
 
     [ExportGroup("Debug")]
     [Export] public bool EnableDebugOutput = false;
+    [Export] public bool ShowHurtboxes = false;
+    [Export] public bool ShowHitboxes = false;
 
     [ExportGroup("Animation")]
     [Export] public NodePath AnimationPlayerPath;
@@ -34,12 +37,23 @@ public partial class CharacterRig : Node3D
     [ExportGroup("Collision")]
     [Export] public NodePath BodyColliderPath;
     [Export] public NodePath HurtboxesRootPath;
-    [Export] public NodePath WeaponHitboxPath;
+    [Export] public NodePath HitboxesRootPath;
+
+    [ExportSubgroup("Collision Layers")]
+    [Export] public uint HurtboxLayer = 4;      // Layer 4 = hurtboxes
+    [Export] public uint HitboxLayer = 5;       // Layer 5 = hitboxes
+    [Export] public uint HurtboxMask = 32;      // Mask bit 5 (detects hitboxes)
+    [Export] public uint HitboxMask = 16;
+
     protected CollisionShape3D BodyCollider;
     protected Node3D HurtboxesRoot;
-    protected readonly List<CollisionShape3D> Hurtboxes = new();
-    protected Area3D WeaponHitbox;
+    protected Node3D HitboxesRoot;
 
+    protected Dictionary<BodyPart, List<HurtboxData>> HurtboxesByPart = new();
+    protected Dictionary<EquipmentSlot, List<HitboxData>> HitboxesBySlot = new();
+
+    protected List<CollisionShape3D> Hurtboxes = new();
+    protected List<CollisionShape3D> Hitboxes = new();
 
     protected AnimationPlayer AnimPlayer;
     protected AnimationTree AnimTree;
@@ -48,6 +62,24 @@ public partial class CharacterRig : Node3D
     private double _lastStateChangeTime = 0;
     protected Skeleton3D Skeleton;
 
+    public enum BodyPart
+    {
+        Head,       // 2x damage
+        Torso,      // 1x damage
+        Arms,       // 0.7x damage
+        Legs,       // 0.8x damage
+        Hands,      // 0.5x damage
+        Feet        // 0.5x damage
+    }
+    private static readonly Dictionary<BodyPart, float> DamageMultipliers = new()
+    {
+        { BodyPart.Head, 2.0f },
+        { BodyPart.Torso, 1.0f },
+        { BodyPart.Arms, 0.7f },
+        { BodyPart.Legs, 0.8f },
+        { BodyPart.Hands, 0.5f },
+        { BodyPart.Feet, 0.5f }
+    };
     public enum EquipmentSlot
     {
         Head,
@@ -81,6 +113,24 @@ public partial class CharacterRig : Node3D
 
     public IReadOnlyList<string> AnimationList { get; private set; }
 
+    protected class HurtboxData
+    {
+        public Area3D Area;
+        public CollisionShape3D Shape;
+        public BodyPart Part;
+        public MeshInstance3D SourceMesh;
+        public MeshInstance3D DebugMesh;  // For visualization
+    }
+
+    protected class HitboxData
+    {
+        public Area3D Area;
+        public CollisionShape3D Shape;
+        public MeshInstance3D SourceMesh;
+        public MeshInstance3D DebugMesh;  // For visualization
+        public bool IsActive;  // Enabled/disabled during attacks
+    }
+
     public override void _Ready()
     {
         CacheNodes();
@@ -90,7 +140,8 @@ public partial class CharacterRig : Node3D
         HideAllEquipment();
         ApplyLoadout(DefaultLoadout);
         AutoSizeMovementCapsule();
-
+        GenerateHurtboxesFromMeshes();
+        GenerateWeaponHitboxes();
     }
 
     protected static List<T> GetChildrenRecursive<T>(Node node) where T : Node
@@ -106,7 +157,7 @@ public partial class CharacterRig : Node3D
         return result;
     }
 
-
+    #region Movement Capsule Auto-Sizing
     protected virtual void AutoSizeMovementCapsule()
     {
         if (BodyColliderPath == null)
@@ -294,49 +345,450 @@ public partial class CharacterRig : Node3D
         return new Aabb(min, max - min);
     }
 
+    #endregion
+
+    #region Hurtbox Generation
+    /// <summary>
+    /// Generates hurtboxes for all body part meshes.
+    /// LEARNING: Hurtboxes are collision areas that detect incoming damage to this character.
+    /// Each body part gets its own hurtbox with specific damage multipliers.
+    /// </summary>
     protected virtual void GenerateHurtboxesFromMeshes()
     {
         HurtboxesRoot = GetNodeOrNull<Node3D>(HurtboxesRootPath);
         if (HurtboxesRoot == null)
         {
-            GD.PushWarning("CharacterRig: Hurtboxes root not found.");
-            return;
+            // Create root node if it doesn't exist
+            HurtboxesRoot = new Node3D();
+            HurtboxesRoot.Name = "Hurtboxes";
+            AddChild(HurtboxesRoot);
+            GD.Print("CharacterRig: Created Hurtboxes root node");
         }
 
-        Hurtboxes.Clear();
+        foreach (var partList in HurtboxesByPart.Values)
+            foreach (var data in partList)
+                data.Area.QueueFree();
+
+        HurtboxesByPart.Clear();
 
         // Gather all body meshes (ignore weapons/clothes)
-        var meshes = GetChildrenRecursive<MeshInstance3D>(this)
-            .Where(m => !m.Name.ToString().Contains("Weapon") && !m.Name.ToString().Contains("Cape"));
+        var meshes = GetChildrenRecursive<MeshInstance3D>(this);
+        var bodyMeshes = meshes.Where(m =>
+            !m.Name.ToString().ToLower().Contains("sword") &&
+            !m.Name.ToString().ToLower().Contains("cape") &&
+            !m.Name.ToString().ToLower().Contains("shield") &&
+            !m.Name.ToString().ToLower().Contains("helmet") &&
+            m.Visible &&
+            m.Mesh != null
+        ).ToList();
 
-        foreach (var mesh in meshes)
+        if (EnableDebugOutput)
+            GD.Print($"CharacterRig: Found {bodyMeshes.Count} body meshes for hurtbox generation");
+
+        foreach (var mesh in bodyMeshes)
         {
-            if (mesh.Mesh == null)
-                continue;
+            BodyPart part = DetermineBodyPart(mesh.Name.ToString());
+            GenerateHurtboxForMesh(mesh, part);
+        }
 
-            // Create an Area3D for detection
-            var area = new Area3D();
-            area.Name = $"{mesh.Name}_Hurtbox";
-            HurtboxesRoot.AddChild(area);
+        if (EnableDebugOutput)
+            GD.Print($"CharacterRig: Generated {HurtboxesByPart.Values.Sum(list => list.Count)} hurtboxes");
+    }
 
-            // Use convex hull collider from mesh
-            var collision = new CollisionShape3D();
-            collision.Shape = mesh.Mesh.CreateConvexShape();
-            area.AddChild(collision);
+    /// <summary>
+    /// Determines which body part a mesh represents based on its name.
+    /// LEARNING: Naming conventions are crucial! Mesh names should include keywords
+    /// like "head", "arm_l", "leg_r", etc.
+    /// </summary>
+    private BodyPart DetermineBodyPart(string meshName)
+    {
+        string name = meshName.ToLower();
 
-            // Align collider to mesh
-            area.GlobalTransform = mesh.GlobalTransform;
+        // Check for specific body parts
+        if (name.Contains("head") || name.Contains("skull") || name.Contains("face"))
+            return BodyPart.Head;
 
-            Hurtboxes.Add(collision);
+        if (name.Contains("hand") || name.Contains("palm") || name.Contains("finger"))
+            return BodyPart.Hands;
+
+        if (name.Contains("foot") || name.Contains("feet") || name.Contains("toe"))
+            return BodyPart.Feet;
+
+        if (name.Contains("arm") || name.Contains("elbow") || name.Contains("shoulder") ||
+            name.Contains("forearm") || name.Contains("upperarm"))
+            return BodyPart.Arms;
+
+        if (name.Contains("leg") || name.Contains("thigh") || name.Contains("calf") ||
+            name.Contains("knee") || name.Contains("shin"))
+            return BodyPart.Legs;
+
+        // Default to torso for chest, spine, pelvis, etc.
+        return BodyPart.Torso;
+    }
+
+    /// <summary>
+    /// Creates a single hurtbox area for a specific mesh.
+    /// LEARNING: We use Area3D (not CharacterBody3D or StaticBody3D) because:
+    /// - Area3D detects overlaps without physics simulation
+    /// - Perfect for hit detection that doesn't need physical collision
+    /// - Lighter weight than physics bodies
+    /// </summary>
+    private void GenerateHurtboxForMesh(MeshInstance3D mesh, BodyPart part)
+    {
+        // Create Area3D for detection
+        var area = new Area3D();
+        area.Name = $"{mesh.Name}_Hurtbox_{part}";
+        area.CollisionLayer = HurtboxLayer;  // What layer this area is on
+        area.CollisionMask = HurtboxMask;    // What layers this area detects
+        area.Monitorable = true;             // Other areas can detect this
+        area.Monitoring = true;              // This area detects others
+
+        HurtboxesRoot.AddChild(area);
+
+        // Create collision shape from mesh
+        var collisionShape = new CollisionShape3D();
+
+        // LEARNING: Shape generation strategies:
+        // 1. ConvexShape - Fast, works for most organic shapes
+        // 2. ConcaveShape - More accurate but slower, use for complex geometry
+        // 3. Simplified shapes (capsule/box) - Fastest but least accurate
+
+        // We'll use convex by default (good balance of performance and accuracy)
+        collisionShape.Shape = mesh.Mesh.CreateConvexShape();
+        area.AddChild(collisionShape);
+
+        // Match the area's transform to the mesh
+        // LEARNING: This ensures the hurtbox moves/rotates with animated bones!
+        area.GlobalTransform = mesh.GlobalTransform;
+
+        // Create debug visualization if enabled
+        MeshInstance3D debugMesh = null;
+        if (ShowHurtboxes)
+        {
+            debugMesh = CreateDebugMesh(mesh, new Color(1, 0, 0, 0.3f)); // Red semi-transparent
+            area.AddChild(debugMesh);
+        }
+
+        // Store hurtbox data
+        var data = new HurtboxData
+        {
+            Area = area,
+            Shape = collisionShape,
+            Part = part,
+            SourceMesh = mesh,
+            DebugMesh = debugMesh
+        };
+
+        if (!HurtboxesByPart.ContainsKey(part))
+            HurtboxesByPart[part] = new List<HurtboxData>();
+
+        HurtboxesByPart[part].Add(data);
+
+        // Connect signal to handle hits
+        area.AreaEntered += (otherArea) => OnHurtboxHit(data, otherArea);
+
+        if (EnableDebugOutput)
+            GD.Print($"CharacterRig: Created hurtbox for {mesh.Name} → {part} (multiplier: {DamageMultipliers[part]}x)");
+    }
+
+    /// <summary>
+    /// Called when an enemy's hitbox overlaps with this character's hurtbox.
+    /// </summary>
+    private void OnHurtboxHit(HurtboxData hurtbox, Area3D hitbox)
+    {
+        float multiplier = DamageMultipliers[hurtbox.Part];
+
+        if (EnableDebugOutput)
+            GD.Print($"CharacterRig: Hurtbox hit! Part: {hurtbox.Part}, Multiplier: {multiplier}x");
+
+        EmitSignal(SignalName.HurtboxHit, hitbox, (int)hurtbox.Part, multiplier);
+    }
+
+    // protected void CacheWeaponHitbox()
+    // {
+    //     WeaponHitbox = GetNodeOrNull<Area3D>(WeaponHitboxPath);
+    //     if (WeaponHitbox != null)
+    //         WeaponHitbox.Monitoring = false; // off by default
+    // }
+    #endregion
+
+    #region Weapon Hitbox Generation
+
+    /// <summary>
+    /// Generates hitboxes for equipped weapons.
+    /// LEARNING: Hitboxes are the "attack zones" - when you swing a sword,
+    /// the hitbox is what detects if you hit an enemy.
+    /// </summary>
+    protected virtual void GenerateWeaponHitboxes()
+    {
+        HitboxesRoot = GetNodeOrNull<Node3D>(HitboxesRootPath);
+        if (HitboxesRoot == null)
+        {
+            HitboxesRoot = new Node3D();
+            HitboxesRoot.Name = "Hitboxes";
+            AddChild(HitboxesRoot);
+            GD.Print("CharacterRig: Created Hitboxes root node");
+        }
+
+        // Clear existing hitboxes
+        foreach (var slotList in HitboxesBySlot.Values)
+            foreach (var data in slotList)
+                data.Area.QueueFree();
+
+        HitboxesBySlot.Clear();
+
+        // Generate hitboxes for each equipment slot
+        foreach (var kvp in Equipment)
+        {
+            EquipmentSlot slot = kvp.Key;
+            List<MeshInstance3D> meshes = kvp.Value;
+
+            foreach (var mesh in meshes)
+            {
+                // Only create hitboxes for weapon meshes
+                if (mesh.Visible && IsWeaponMesh(mesh.Name.ToString()))
+                {
+                    GenerateHitboxForMesh(mesh, slot);
+                }
+            }
+        }
+
+        if (EnableDebugOutput)
+            GD.Print($"CharacterRig: Generated {HitboxesBySlot.Values.Sum(list => list.Count)} weapon hitboxes");
+    }
+
+    /// <summary>
+    /// Determines if a mesh is a weapon based on naming conventions.
+    /// </summary>
+    private bool IsWeaponMesh(string meshName)
+    {
+        string name = meshName.ToLower();
+        return name.Contains("sword") || name.Contains("axe") ||
+               name.Contains("hammer") || name.Contains("mace") ||
+               name.Contains("blade") || name.Contains("weapon");
+    }
+
+    /// <summary>
+    /// Creates a hitbox for a weapon mesh.
+    /// </summary>
+    private void GenerateHitboxForMesh(MeshInstance3D mesh, EquipmentSlot slot)
+    {
+        var area = new Area3D();
+        area.Name = $"{mesh.Name}_Hitbox";
+        area.CollisionLayer = HitboxLayer;
+        area.CollisionMask = HitboxMask;
+        area.Monitorable = true;
+        area.Monitoring = false;  // Disabled by default, enabled during attack animations
+
+        HitboxesRoot.AddChild(area);
+
+        var collisionShape = new CollisionShape3D();
+
+        // For weapons, we might want more precise collision
+        // Try convex first, fall back to simplified shape if needed
+        Shape3D shape = mesh.Mesh.CreateConvexShape();
+
+        if (shape == null)
+        {
+            // Fallback: create a capsule aligned with weapon
+            Aabb aabb = mesh.GetAabb();
+            float height = aabb.Size.Y; // Assume weapon is vertical
+            float radius = Mathf.Max(aabb.Size.X, aabb.Size.Z) * 0.5f;
+
+            var capsule = new CapsuleShape3D();
+            capsule.Height = height;
+            capsule.Radius = radius;
+            shape = capsule;
+
+            if (EnableDebugOutput)
+                GD.Print($"CharacterRig: Using fallback capsule for {mesh.Name}");
+        }
+
+        collisionShape.Shape = shape;
+        area.AddChild(collisionShape);
+
+        // Match transform to weapon mesh
+        area.GlobalTransform = mesh.GlobalTransform;
+
+        // Create debug visualization
+        MeshInstance3D debugMesh = null;
+        if (ShowHitboxes)
+        {
+            debugMesh = CreateDebugMesh(mesh, new Color(0, 1, 0, 0.3f)); // Green semi-transparent
+            area.AddChild(debugMesh);
+        }
+
+        var data = new HitboxData
+        {
+            Area = area,
+            Shape = collisionShape,
+            SourceMesh = mesh,
+            DebugMesh = debugMesh,
+            IsActive = false
+        };
+
+        if (!HitboxesBySlot.ContainsKey(slot))
+            HitboxesBySlot[slot] = new List<HitboxData>();
+
+        HitboxesBySlot[slot].Add(data);
+
+        if (EnableDebugOutput)
+            GD.Print($"CharacterRig: Created hitbox for weapon {mesh.Name} in slot {slot}");
+    }
+
+    /// <summary>
+    /// Enable weapon hitboxes during attack animations.
+    /// Call this from animation events: "attack_start"
+    /// </summary>
+    public void EnableWeaponHitboxes()
+    {
+        foreach (var slotList in HitboxesBySlot.Values)
+        {
+            foreach (var data in slotList)
+            {
+                if (data.SourceMesh.Visible) // Only enable if weapon is visible/equipped
+                {
+                    data.Area.Monitoring = true;
+                    data.IsActive = true;
+
+                    if (EnableDebugOutput)
+                        GD.Print($"CharacterRig: Enabled hitbox for {data.SourceMesh.Name}");
+                }
+            }
         }
     }
 
-    protected void CacheWeaponHitbox()
+    /// <summary>
+    /// Disable weapon hitboxes after attack animations.
+    /// Call this from animation events: "attack_end"
+    /// </summary>
+    public void DisableWeaponHitboxes()
     {
-        WeaponHitbox = GetNodeOrNull<Area3D>(WeaponHitboxPath);
-        if (WeaponHitbox != null)
-            WeaponHitbox.Monitoring = false; // off by default
+        foreach (var slotList in HitboxesBySlot.Values)
+        {
+            foreach (var data in slotList)
+            {
+                data.Area.Monitoring = false;
+                data.IsActive = false;
+            }
+        }
+
+        if (EnableDebugOutput)
+            GD.Print("CharacterRig: Disabled all weapon hitboxes");
     }
+
+    #endregion
+
+    #region Debug Visualization
+
+    /// <summary>
+    /// Creates a semi-transparent mesh for visualizing collision shapes.
+    /// LEARNING: This is super helpful for debugging! You can see exactly where
+    /// your hitboxes and hurtboxes are during gameplay.
+    /// </summary>
+    private MeshInstance3D CreateDebugMesh(MeshInstance3D sourceMesh, Color color)
+    {
+        var debugMesh = new MeshInstance3D();
+        debugMesh.Mesh = sourceMesh.Mesh;
+        debugMesh.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
+
+        // Create transparent material
+        var material = new StandardMaterial3D();
+        material.AlbedoColor = color;
+        material.Transparency = BaseMaterial3D.TransparencyEnum.Alpha;
+        material.CullMode = BaseMaterial3D.CullModeEnum.Disabled; // See from both sides
+
+        debugMesh.MaterialOverride = material;
+
+        return debugMesh;
+    }
+
+    /// <summary>
+    /// Toggle hurtbox visualization at runtime.
+    /// </summary>
+    public void ToggleHurtboxVisuals(bool visible)
+    {
+        ShowHurtboxes = visible;
+
+        foreach (var partList in HurtboxesByPart.Values)
+        {
+            foreach (var data in partList)
+            {
+                if (visible && data.DebugMesh == null)
+                {
+                    data.DebugMesh = CreateDebugMesh(data.SourceMesh, new Color(1, 0, 0, 0.3f));
+                    data.Area.AddChild(data.DebugMesh);
+                }
+                else if (!visible && data.DebugMesh != null)
+                {
+                    data.DebugMesh.QueueFree();
+                    data.DebugMesh = null;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Toggle hitbox visualization at runtime.
+    /// </summary>
+    public void ToggleHitboxVisuals(bool visible)
+    {
+        ShowHitboxes = visible;
+
+        foreach (var slotList in HitboxesBySlot.Values)
+        {
+            foreach (var data in slotList)
+            {
+                if (visible && data.DebugMesh == null)
+                {
+                    data.DebugMesh = CreateDebugMesh(data.SourceMesh, new Color(0, 1, 0, 0.3f));
+                    data.Area.AddChild(data.DebugMesh);
+                }
+                else if (!visible && data.DebugMesh != null)
+                {
+                    data.DebugMesh.QueueFree();
+                    data.DebugMesh = null;
+                }
+            }
+        }
+    }
+
+    #endregion
+
+    #region Update Loop
+
+    public override void _Process(double delta)
+    {
+        UpdateHurtboxTransforms();
+        UpdateHitboxTransforms();
+    }
+
+    private void UpdateHurtboxTransforms()
+    {
+        foreach (var partList in HurtboxesByPart.Values)
+        {
+            foreach (var data in partList)
+            {
+                // Match the area's transform to the source mesh's current transform
+                data.Area.GlobalTransform = data.SourceMesh.GlobalTransform;
+            }
+        }
+    }
+
+    private void UpdateHitboxTransforms()
+    {
+        foreach (var slotList in HitboxesBySlot.Values)
+        {
+            foreach (var data in slotList)
+            {
+                data.Area.GlobalTransform = data.SourceMesh.GlobalTransform;
+            }
+        }
+    }
+
+    #endregion
+
+    #region Equipment & Animations (existing code with updates)
 
     protected virtual void CacheNodes()
     {
@@ -414,43 +866,6 @@ public partial class CharacterRig : Node3D
         }
     }
 
-    public virtual void PlayAnimation(string name, float blend = 0.2f)
-    {
-        if (AnimPlayer != null && AnimPlayer.HasAnimation(name))
-            AnimPlayer.Play(name, customBlend: blend);
-    }
-
-    public virtual void PlayState(State state)
-    {
-        double now = Time.GetTicksMsec() / 1000.0;
-        _currentState = state;
-
-        if (_currentState != state)
-        {
-            _lastStateChangeTime = now;
-        }
-        if (now - _lastStateChangeTime < StateChangeCooldown)
-        {
-            return;
-        }
-
-        if (StateMachine != null)
-        {
-            StateMachine.Travel(state.ToString());
-            return;
-        }
-
-        // Fallback: AnimationPlayer-only rigs
-        if (StateToAnimation.TryGetValue(state, out var animName))
-        {
-            PlayAnimation(animName);
-        }
-        else
-        {
-            GD.PushWarning($"CharacterRig: No animation mapping found for state {state}.");
-        }
-    }
-
     protected virtual void HideAllEquipment()
     {
         foreach (var slot in Equipment.Values)
@@ -465,6 +880,9 @@ public partial class CharacterRig : Node3D
 
         foreach (var mesh in meshes)
             mesh.Visible = mesh.Name == meshName;
+
+        // NEW: Regenerate hitboxes when equipment changes
+        GenerateWeaponHitboxes();
     }
 
     public virtual void Unequip(EquipmentSlot slot)
@@ -474,6 +892,9 @@ public partial class CharacterRig : Node3D
 
         foreach (var mesh in meshes)
             mesh.Visible = false;
+
+        // NEW: Regenerate hitboxes when equipment changes
+        GenerateWeaponHitboxes();
     }
 
     public virtual void ApplyLoadout(CharacterLoadout loadout)
@@ -515,14 +936,47 @@ public partial class CharacterRig : Node3D
         return Skeleton?.FindBone(boneName) ?? -1;
     }
 
+    public virtual void PlayAnimation(string name, float blend = 0.2f)
+    {
+        if (AnimPlayer != null && AnimPlayer.HasAnimation(name))
+            AnimPlayer.Play(name, customBlend: blend);
+    }
+
+    public virtual void PlayState(State state)
+    {
+        double now = Time.GetTicksMsec() / 1000.0;
+
+        if (_currentState != state)
+        {
+            _lastStateChangeTime = now;
+            _currentState = state;
+        }
+
+        if (now - _lastStateChangeTime < StateChangeCooldown)
+            return;
+
+        if (StateMachine != null)
+        {
+            StateMachine.Travel(state.ToString());
+            return;
+        }
+
+        if (StateToAnimation.TryGetValue(state, out var animName))
+        {
+            PlayAnimation(animName);
+        }
+        else
+        {
+            GD.PushWarning($"CharacterRig: No animation mapping found for state {state}.");
+        }
+    }
+
     // -------------------- Animation Event Relay --------------------
-    // These are called from animation tracks (Call Method track → call these)
 
     public void AnimEvent(string eventName)
     {
         EmitSignal(SignalName.AnimationEvent, eventName);
 
-        // Optional typed relays
         switch (eventName)
         {
             case "attack_hit":
@@ -535,11 +989,13 @@ public partial class CharacterRig : Node3D
                 EmitSignal(SignalName.Death);
                 break;
             case "attack_start":
-                WeaponHitbox.Monitoring = true;
+                EnableWeaponHitboxes();  // NEW: Enable hitboxes
                 break;
             case "attack_end":
-                WeaponHitbox.Monitoring = false;
+                DisableWeaponHitboxes(); // NEW: Disable hitboxes
                 break;
         }
     }
+
+    #endregion
 }

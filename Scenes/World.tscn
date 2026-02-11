@@ -9,8 +9,9 @@
 [node name="World" type="Node3D" unique_id=1972273423 node_paths=PackedStringArray("Player")]
 script = ExtResource("1_j0p05")
 Player = NodePath("Player")
-PlacePlayerAtRandom = true
-RegenerateWorld = true
+PlayerStartPositionX = 225
+PlayerStartPositionZ = 1777
+PlayerStartPositionY = 5
 ShowDebugInfo = true
 
 [node name="Player" type="CharacterBody3D" parent="." unique_id=889988968 node_paths=PackedStringArray("PlayerNode")]
@@ -23,6 +24,9 @@ JumpVelocity = 11.0
 PlayerNode = NodePath("Knight")
 
 [node name="Knight" parent="Player" unique_id=799545041 instance=ExtResource("3_5nsto")]
+EnableDebugOutput = true
+ShowHurtboxes = true
+ShowHitboxes = true
 BodyColliderPath = NodePath("../BodyCollider")
 
 [node name="BodyCollider" type="CollisionShape3D" parent="Player" unique_id=1607737042]

@@ -6,5 +6,5 @@ public class LoadedChunk
     public MeshInstance3D MeshInstance;
     public StaticBody3D Body;
     public CollisionShape3D CollisionShape;
-    public List<HarvestableEntity> Harvestables = new List<HarvestableEntity>();
+    public List<PropInstanceData> Props = new List<PropInstanceData>();
 }

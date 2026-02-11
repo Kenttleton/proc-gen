@@ -1,6 +1,8 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Linq.Expressions;
 
 public partial class Compass : Control
 {
@@ -14,11 +16,15 @@ public partial class Compass : Control
 	// POI markers
 	private Dictionary<Vector2, Control> _markers = new();
 
+	private Panel _leftFade;
+	private Panel _rightFade;
+
 	// Compass settings
 	private const float COMPASS_WIDTH_PERCENT = 0.8f; // 80% of screen width
 	private const float COMPASS_HEIGHT = 40f;
 	private const float COMPASS_Y_OFFSET = 10f;
 	private const float MARKER_SIZE = 8f;
+	private const float FADE_WIDTH = 60f;
 
 	public Compass(Camera3D camera)
 	{
@@ -71,6 +77,10 @@ public partial class Compass : Control
 		_compassContainer.AnchorRight = 1;
 		_compassContainer.AnchorTop = 0;
 		_compassContainer.AnchorBottom = 1;
+		_compassContainer.OffsetLeft = 5;
+		_compassContainer.OffsetRight = -5;
+		_compassContainer.OffsetTop = 0;
+		_compassContainer.OffsetBottom = 0;
 		_compassContainer.ClipContents = true; // Important: clips content outside bounds
 		_compassBar.AddChild(_compassContainer);
 
@@ -79,6 +89,8 @@ public partial class Compass : Control
 
 		// Create center indicator (shows where camera is pointing)
 		CreateCenterIndicator();
+
+		//CreateFadeEdges();
 	}
 
 	private void CreateCardinalLabels()
@@ -98,6 +110,8 @@ public partial class Compass : Control
 				var indicator = new ColorRect();
 				indicator.Color = new Color(1f, 0.9f, 0.6f);
 				indicator.CustomMinimumSize = new Vector2(2, 10);
+				indicator.OffsetLeft = 28; // Position tick mark at center of label (assuming label width ~60)
+				indicator.OffsetRight = -28;
 
 				if (i % 45 == 0)
 				{
@@ -108,14 +122,13 @@ public partial class Compass : Control
 					label.AddThemeColorOverride("font_outline_color", Colors.Black);
 					label.AddThemeConstantOverride("outline_size", 2);
 					label.AddThemeFontSizeOverride("font_size", 18);
-
+					//label.OffsetRight = -5;
+					indicator.CustomMinimumSize = new Vector2(2, 5);
 					// Make cardinal directions (N, E, S, W) larger
 					if (i % 90 == 0)
 					{
 						label.AddThemeFontSizeOverride("font_size", 24);
 					}
-
-					indicator.CustomMinimumSize = new Vector2(2, 5);
 				}
 
 				label.AddChild(indicator);
@@ -143,7 +156,73 @@ public partial class Compass : Control
 		_compassBar.AddChild(indicator);
 	}
 
-	public void UpdatePOIs(Vector3 playerWorldPos, IEnumerable<Vector2> poiWorldXZ)
+	private void CreateFadeEdges()
+	{
+		// Left fade
+		_leftFade = new Panel();
+		_leftFade.AnchorLeft = 0;
+		_leftFade.AnchorRight = 0;
+		_leftFade.AnchorTop = 0;
+		_leftFade.AnchorBottom = 1;
+		_leftFade.OffsetRight = FADE_WIDTH;
+		_leftFade.MouseFilter = MouseFilterEnum.Ignore; // Don't block mouse events
+
+		// Create gradient style - fades from opaque black to transparent
+		var leftGradient = new StyleBoxFlat();
+		leftGradient.BgColor = new Color(0, 0, 0, 0.6f); // Match compass background
+		leftGradient.CornerRadiusTopLeft = 5;
+		leftGradient.CornerRadiusBottomLeft = 5;
+
+		// LEARNING NOTE: Godot 4 doesn't support gradient in StyleBoxFlat directly,
+		// so we'll use a ColorRect with a Gradient texture instead
+		var leftGradientRect = new ColorRect();
+		leftGradientRect.AnchorLeft = 0;
+		leftGradientRect.AnchorRight = 0;
+		leftGradientRect.AnchorTop = 0;
+		leftGradientRect.AnchorBottom = 1;
+		leftGradientRect.OffsetRight = FADE_WIDTH;
+		leftGradientRect.MouseFilter = MouseFilterEnum.Ignore;
+
+		// Create gradient texture
+		var leftGradientTexture = new GradientTexture2D();
+		var leftGradientData = new Gradient();
+		leftGradientData.SetColor(0, new Color(0, 0, 0, 0.6f)); // Left edge - opaque
+		leftGradientData.SetColor(1, new Color(0, 0, 0, 0));    // Right edge - transparent
+		leftGradientTexture.Gradient = leftGradientData;
+		leftGradientTexture.Width = (int)FADE_WIDTH;
+		leftGradientTexture.Height = (int)COMPASS_HEIGHT;
+		leftGradientTexture.Fill = GradientTexture2D.FillEnum.Linear;
+		leftGradientTexture.FillFrom = new Vector2(0, 0.5f);
+		leftGradientTexture.FillTo = new Vector2(1, 0.5f);
+
+		leftGradientRect.DrawTexture(leftGradientTexture, new Vector2(0, 0.5f));
+		_compassBar.AddChild(leftGradientRect);
+
+		// Right fade (mirror of left)
+		var rightGradientRect = new ColorRect();
+		rightGradientRect.AnchorLeft = 1;
+		rightGradientRect.AnchorRight = 1;
+		rightGradientRect.AnchorTop = 0;
+		rightGradientRect.AnchorBottom = 1;
+		rightGradientRect.OffsetLeft = -FADE_WIDTH;
+		rightGradientRect.MouseFilter = MouseFilterEnum.Ignore;
+
+		var rightGradientTexture = new GradientTexture2D();
+		var rightGradientData = new Gradient();
+		rightGradientData.SetColor(0, new Color(0, 0, 0, 0));    // Left edge - transparent
+		rightGradientData.SetColor(1, new Color(0, 0, 0, 0.6f)); // Right edge - opaque
+		rightGradientTexture.Gradient = rightGradientData;
+		rightGradientTexture.Width = (int)FADE_WIDTH;
+		rightGradientTexture.Height = (int)COMPASS_HEIGHT;
+		rightGradientTexture.Fill = GradientTexture2D.FillEnum.Linear;
+		rightGradientTexture.FillFrom = new Vector2(0, 0.5f);
+		rightGradientTexture.FillTo = new Vector2(1, 0.5f);
+
+		rightGradientRect.DrawTexture(rightGradientTexture, new Vector2(0, 0.5f));
+		_compassBar.AddChild(rightGradientRect);
+	}
+
+	public void UpdatePOIs(Vector3 playerWorldPos, IEnumerable<Vector2> poiWorldXZ, IEnumerable<string> poiTypes)
 	{
 		if (_camera == null || _compassContainer == null)
 			return;
@@ -163,10 +242,10 @@ public partial class Compass : Control
 		// Create new POI markers
 		Vector2 playerXZ = new Vector2(playerWorldPos.X, playerWorldPos.Z);
 
-		foreach (var poi in poiWorldXZ)
+		for (int i = 0; i < poiWorldXZ.Count(); i++)
 		{
 			// Calculate angle to POI from player position
-			Vector2 toPOI = playerXZ - poi;
+			Vector2 toPOI = playerXZ - poiWorldXZ.ElementAt(i);
 			float angleToTarget = Mathf.Atan2(toPOI.X, toPOI.Y); // Angle in world space
 
 			// Calculate relative angle (difference between target angle and camera angle)
@@ -185,7 +264,7 @@ public partial class Compass : Control
 			float normalizedPosition = relativeAngle / maxDisplayAngle; // -1 to 1
 
 			// Create and position marker
-			var marker = CreatePOIMarker(poi, playerXZ);
+			var marker = CreatePOIMarker(playerXZ, poiWorldXZ.ElementAt(i), poiTypes.ElementAt(i));
 			_compassContainer.AddChild(marker);
 
 			// Position marker (0.5 = center of bar)
@@ -199,7 +278,7 @@ public partial class Compass : Control
 			marker.OffsetTop = -MARKER_SIZE / 2f;
 			marker.OffsetBottom = MARKER_SIZE / 2f;
 
-			_markers[poi] = marker;
+			_markers[poiWorldXZ.ElementAt(i)] = marker;
 		}
 	}
 
@@ -234,14 +313,14 @@ public partial class Compass : Control
 			label.AnchorRight = xPosition;
 			label.AnchorTop = 0.5f;
 			label.AnchorBottom = 0.5f;
-			label.OffsetLeft = -30; // Half of label width estimate
+			label.OffsetLeft = -30;
 			label.OffsetRight = 30;
 			label.OffsetTop = -15;
 			label.OffsetBottom = 15;
 		}
 	}
 
-	private Control CreatePOIMarker(Vector2 poiPos, Vector2 playerPos)
+	private Control CreatePOIMarker(Vector2 playerPos, Vector2 poiPos, string poiType)
 	{
 		// Calculate distance to POI
 		float distance = playerPos.DistanceTo(poiPos);
@@ -252,7 +331,18 @@ public partial class Compass : Control
 
 		// Icon (you can customize this based on POI type)
 		var icon = new ColorRect();
-		icon.Color = new Color(1f, 0.8f, 0.2f); // Gold color
+		switch (poiType)
+		{
+			case "dungeon":
+				icon.Color = new Color(0.26f, 0.17f, 0.84f); // Cyan for resources
+				break;
+			case "boss":
+				icon.Color = new Color(0.53f, 0.03f, 0.03f); // Red for enemies
+				break;
+			default:
+				icon.Color = new Color(0.11f, 0.33f, 0.19f); // Green color
+				break;
+		}
 		icon.CustomMinimumSize = new Vector2(MARKER_SIZE, MARKER_SIZE);
 		container.AddChild(icon);
 
