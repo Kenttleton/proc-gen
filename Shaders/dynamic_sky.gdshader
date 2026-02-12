@@ -17,9 +17,9 @@ uniform vec3 night_horizon_color : source_color = vec3(0.05, 0.05, 0.15);
 
 // Sun/Moon
 uniform vec3 sun_color : source_color = vec3(1.0, 0.95, 0.8);
-uniform vec3 moon_color : source_color = vec3(0.8, 0.85, 1.0);
+uniform vec3 moon_color : source_color = vec3(0.9, 0.9, 1.0);
 uniform float sun_size = 0.04;
-uniform float moon_size = 0.03;
+uniform float moon_size = 0.04;  // FIX: Made moon bigger (was 0.03)
 
 // Stars
 uniform sampler2D stars_texture : filter_nearest, repeat_enable;
@@ -38,15 +38,15 @@ vec3 get_moon_direction() {
     return -get_sun_direction();
 }
 
-// Simple star pattern
+// FIX: Enhanced star rendering with better visibility
 float get_stars(vec3 direction) {
-    // Only show stars when looking up
-    if (direction.y < 0.0) return 0.0;
+    // Only show stars when looking up (but be more lenient)
+    if (direction.y < -0.2) return 0.0;  // FIX: Changed from 0.0 to -0.2
     
     // Sample star texture based on sky direction
     vec2 uv = vec2(
         atan(direction.x, direction.z) / 6.28318 + 0.5,
-        acos(direction.y) / 3.14159
+        acos(max(direction.y, 0.0)) / 3.14159  // FIX: Clamp to avoid negative
     );
     
     float star = texture(stars_texture, uv * 10.0).r;
@@ -54,6 +54,9 @@ float get_stars(vec3 direction) {
     // Make stars twinkle
     float twinkle = sin(TIME * 2.0 + star * 100.0) * 0.5 + 0.5;
     star *= twinkle * 0.5 + 0.5;
+    
+    // FIX: Boost star brightness significantly
+    star = pow(star, 0.5);  // Gamma correction for brighter stars
     
     return star;
 }
@@ -93,22 +96,24 @@ void sky() {
     float sun_glow = pow(max(sun_dot, 0.0), 8.0) * 0.3 * is_day;
     
     // Only show sun during day
-    float sun_visibility = smoothstep(0.0, 0.1, sun_dir.y);
+    float sun_visibility = smoothstep(-0.1, 0.1, sun_dir.y);  // FIX: Start showing earlier
     vec3 sun_contrib = (sun_mask + sun_glow) * sun_color * sun_visibility;
     
-    // Moon
+    // FIX: Enhanced moon rendering
     vec3 moon_dir = get_moon_direction();
     float moon_dot = dot(direction, moon_dir);
-    float moon_mask = smoothstep(1.0 - moon_size * 2.0, 1.0 - moon_size, moon_dot);
-    float moon_glow = pow(max(moon_dot, 0.0), 16.0) * 0.2;
     
-    // Only show moon during night
-    float moon_visibility = smoothstep(0.0, 0.1, moon_dir.y) * is_night;
+    // Larger, more visible moon
+    float moon_mask = smoothstep(1.0 - moon_size * 2.5, 1.0 - moon_size * 0.8, moon_dot);  // FIX: Adjusted thresholds
+    float moon_glow = pow(max(moon_dot, 0.0), 12.0) * 0.4 * is_night;  // FIX: Increased glow, reduced falloff
+    
+    // Show moon during night (more lenient threshold)
+    float moon_visibility = smoothstep(-0.1, 0.1, moon_dir.y) * is_night;  // FIX: Start showing earlier
     vec3 moon_contrib = (moon_mask + moon_glow) * moon_color * moon_visibility;
     
-    // Stars (only visible at night)
-    float stars = get_stars(direction) * is_night * stars_intensity;
-    stars *= smoothstep(0.2, 0.0, weather_darkness); // Hide stars in bad weather
+    // FIX: Enhanced stars with better visibility
+    float stars = get_stars(direction) * is_night * stars_intensity * 2.0;  // FIX: 2x multiplier
+    stars *= smoothstep(0.3, 0.0, weather_darkness);  // FIX: Show stars even in light weather
     
     // Combine everything
     vec3 final_color = sky_color + sun_contrib + moon_contrib + vec3(stars);

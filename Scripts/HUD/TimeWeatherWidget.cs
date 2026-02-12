@@ -10,24 +10,23 @@ using System;
 /// </summary>
 public partial class TimeWeatherWidget : Control
 {
-    private DayNightCycleManager _dayNightManager;
-    private ShaderWeatherSystem _weatherSystem;
+    public DayNightCycleManager _dayNightManager;
+    public ShaderWeatherSystem _weatherSystem;
 
     // UI Elements
-    private Control _circleContainer;
+    private TimeCircleDrawer _circleDrawer;
     private Label _timeLabel;
     private Label _weatherLabel;
     private Label _temperatureLabel;
 
     // Visual settings
     private const float WIDGET_SIZE = 120f;
-    private const float CIRCLE_RADIUS = 50f;
-    private const float SUN_MARKER_SIZE = 8f;
 
     // Time markers (for drawing)
-    private float _sunriseAngle = 0f;  // Calculated angle for sunrise
-    private float _sunsetAngle = 0f;   // Calculated angle for sunset
-    private float _currentTimeAngle = 0f; // Current time on the circle
+    public float _sunriseAngle = 0f;  // Calculated angle for sunrise
+    public float _sunsetAngle = 0f;   // Calculated angle for sunset
+    public float _currentTimeAngle = 0f; // Current time on the circle
+    public bool _isDaytime = false;
 
     public TimeWeatherWidget(DayNightCycleManager dayNightManager, ShaderWeatherSystem weatherSystem)
     {
@@ -69,13 +68,13 @@ public partial class TimeWeatherWidget : Control
         AddChild(background);
 
         // Container for the circular drawing
-        _circleContainer = new Control();
-        _circleContainer.AnchorLeft = 0;
-        _circleContainer.AnchorRight = 1;
-        _circleContainer.AnchorTop = 0;
-        _circleContainer.AnchorBottom = 0;
-        _circleContainer.OffsetBottom = WIDGET_SIZE * 0.65f; // Top portion for circle
-        AddChild(_circleContainer);
+        _circleDrawer = new TimeCircleDrawer(this);
+        _circleDrawer.AnchorLeft = 0;
+        _circleDrawer.AnchorRight = 1;
+        _circleDrawer.AnchorTop = 0;
+        _circleDrawer.AnchorBottom = 0;
+        _circleDrawer.OffsetBottom = WIDGET_SIZE * 0.65f; // Top portion for circle
+        AddChild(_circleDrawer);
 
         // Time label (center of circle)
         _timeLabel = new Label();
@@ -89,7 +88,7 @@ public partial class TimeWeatherWidget : Control
         _timeLabel.AddThemeColorOverride("font_outline_color", Colors.Black);
         _timeLabel.AddThemeConstantOverride("outline_size", 2);
         _timeLabel.AddThemeFontSizeOverride("font_size", 18);
-        _circleContainer.AddChild(_timeLabel);
+        _circleDrawer.AddChild(_timeLabel);
 
         // Weather and temperature info (bottom portion)
         var infoContainer = new HBoxContainer();
@@ -131,7 +130,7 @@ public partial class TimeWeatherWidget : Control
         UpdateWeatherDisplay();
 
         // Trigger redraw for the rotating circle
-        _circleContainer.QueueRedraw();
+        _circleDrawer?.QueueRedraw();
     }
 
     private void UpdateTimeDisplay()
@@ -143,19 +142,61 @@ public partial class TimeWeatherWidget : Control
         // Calculate angles for visualization
         float timeOfDay = _dayNightManager.TimeOfDay;
 
+        _isDaytime = timeOfDay >= 0.25f && timeOfDay <= 0.75f;
+
         // Current time angle (rotate the half-circle based on time)
         // 0.0 (midnight) = 180° (bottom), 0.5 (noon) = 0° (top), 1.0 (midnight) = 180° (bottom)
-        _currentTimeAngle = (timeOfDay - 0.5f) * Mathf.Pi; // -90° to +90°
+        // _currentTimeAngle = (timeOfDay - 0.5f) * Mathf.Pi; // -90° to +90°
 
         // Sunrise at 6 AM (0.25) and sunset at 6 PM (0.75)
         // These are fixed positions on our rotating half-circle
-        float sunriseTime = 0.25f; // 6 AM
-        float sunsetTime = 0.75f;  // 6 PM
+        float sunriseTime = 0.25f;  // 6 AM
+        float sunsetTime = 0.75f;   // 6 PM
 
-        // Calculate relative angles from current time
-        _sunriseAngle = (sunriseTime - timeOfDay) * Mathf.Tau;
-        _sunsetAngle = (sunsetTime - timeOfDay) * Mathf.Tau;
+        if (_isDaytime)
+        {
+            // DAYTIME: Show sun's arc from sunrise to sunset
+            // Map sunrise/sunset to arc positions
+            _sunriseAngle = MapTimeToArcAngle(sunriseTime, timeOfDay, true);
+            _sunsetAngle = MapTimeToArcAngle(sunsetTime, timeOfDay, true);
+        }
+        else
+        {
+            // NIGHTTIME: Show moon's arc
+            // Moon rises when sun sets, sets when sun rises
+            _sunriseAngle = MapTimeToArcAngle(sunriseTime, timeOfDay, false);
+            _sunsetAngle = MapTimeToArcAngle(sunsetTime, timeOfDay, false);
+        }
     }
+
+    /// <summary>
+	/// Maps a time value to an angle on the arc.
+	/// FIX: Proper rotation - top of arc (angle 0) = current time
+	/// </summary>
+	private float MapTimeToArcAngle(float targetTime, float currentTime, bool isDaytime)
+    {
+        // Calculate time difference
+        float timeDiff = targetTime - currentTime;
+
+        // Handle wraparound (e.g., if current is 11 PM and target is 1 AM)
+        if (timeDiff > 0.5f)
+            timeDiff -= 1.0f;
+        else if (timeDiff < -0.5f)
+            timeDiff += 1.0f;
+
+        // FIX: Map to arc angle
+        // The arc spans 12 hours (0.5 of day cycle)
+        // -PI/2 = 6 hours ago (left)
+        // 0 = now (top)
+        // +PI/2 = 6 hours from now (right)
+
+        // timeDiff is in range [-0.5, 0.5] (fraction of day)
+        // Convert to radians: multiply by 2*PI (full circle) = Tau
+        float angle = timeDiff * Mathf.Tau;
+
+        return angle;
+    }
+
 
     private void UpdateWeatherDisplay()
     {
@@ -211,161 +252,5 @@ public partial class TimeWeatherWidget : Control
         float weatherEffect = -weatherDarkness * 5f; // Up to -5°C in storms
 
         return Mathf.Clamp(timeTemp + weatherEffect, 0f, 40f);
-    }
-
-    // LEARNING NOTE: This is where we custom-draw the rotating half-circle!
-    // Godot calls _Draw() automatically when QueueRedraw() is called.
-    public override void _Draw()
-    {
-        if (_circleContainer == null)
-            return;
-
-        // We'll draw on the _circleContainer, so we need to override its draw
-        // Actually, we need to connect to its draw signal
-        // Let me use a different approach - draw directly here and position correctly
-    }
-
-    // Better approach: Use a custom Control node for drawing
-    // Let me add this as a nested class
-    public override void _EnterTree()
-    {
-        base._EnterTree();
-
-        if (_circleContainer != null)
-        {
-            _circleContainer.Draw += DrawTimeCircle;
-        }
-    }
-
-    public override void _ExitTree()
-    {
-        base._ExitTree();
-
-        if (_circleContainer != null)
-        {
-            _circleContainer.Draw -= DrawTimeCircle;
-        }
-    }
-
-    private void DrawTimeCircle()
-    {
-        if (_dayNightManager == null || _circleContainer == null)
-            return;
-
-        Vector2 center = _circleContainer.Size / 2f;
-        center.Y = CIRCLE_RADIUS + 10; // Position circle in upper portion
-
-        // Draw the half-circle background (day/night gradient)
-        DrawDayNightGradient(center);
-
-        // Draw sunrise and sunset markers
-        DrawSunMarker(center, _sunriseAngle, true);  // Sunrise
-        DrawSunMarker(center, _sunsetAngle, false);  // Sunset
-
-        // Draw the current time indicator (small line at top)
-        DrawCurrentTimeIndicator(center);
-    }
-
-    private void DrawDayNightGradient(Vector2 center)
-    {
-        // Draw a half-circle with gradient from sunrise (orange) to midday (blue) to sunset (orange)
-        // We'll draw multiple arc segments with different colors
-
-        int segments = 32;
-        float angleStep = Mathf.Pi / segments;
-
-        for (int i = 0; i < segments; i++)
-        {
-            float startAngle = -Mathf.Pi / 2f + (i * angleStep);
-            float endAngle = startAngle + angleStep;
-
-            // Calculate color based on position on the arc
-            // -PI/2 (left/sunrise) = orange, 0 (top/noon) = blue, PI/2 (right/sunset) = orange
-            float t = (float)i / segments; // 0 to 1
-            Color color = GetTimeColor(t);
-
-            // Draw arc segment
-            Vector2 start = center + new Vector2(Mathf.Cos(startAngle), Mathf.Sin(startAngle)) * CIRCLE_RADIUS;
-            Vector2 end = center + new Vector2(Mathf.Cos(endAngle), Mathf.Sin(endAngle)) * CIRCLE_RADIUS;
-
-            _circleContainer.DrawLine(start, end, color, 4f);
-        }
-
-        // Draw the base line of the half-circle
-        Vector2 leftEnd = center + new Vector2(-CIRCLE_RADIUS, 0);
-        Vector2 rightEnd = center + new Vector2(CIRCLE_RADIUS, 0);
-        _circleContainer.DrawLine(leftEnd, rightEnd, new Color(0.5f, 0.5f, 0.5f), 2f);
-    }
-
-    private Color GetTimeColor(float t)
-    {
-        // t goes from 0 (sunrise/left) to 1 (sunset/right)
-        // Create gradient: orange -> yellow -> blue -> yellow -> orange
-
-        if (t < 0.25f)
-        {
-            // Sunrise to morning
-            float blend = t / 0.25f;
-            return new Color(1f, 0.5f, 0.2f).Lerp(new Color(1f, 0.9f, 0.4f), blend);
-        }
-        else if (t < 0.5f)
-        {
-            // Morning to noon
-            float blend = (t - 0.25f) / 0.25f;
-            return new Color(1f, 0.9f, 0.4f).Lerp(new Color(0.4f, 0.7f, 1f), blend);
-        }
-        else if (t < 0.75f)
-        {
-            // Noon to evening
-            float blend = (t - 0.5f) / 0.25f;
-            return new Color(0.4f, 0.7f, 1f).Lerp(new Color(1f, 0.9f, 0.4f), blend);
-        }
-        else
-        {
-            // Evening to sunset
-            float blend = (t - 0.75f) / 0.25f;
-            return new Color(1f, 0.9f, 0.4f).Lerp(new Color(1f, 0.5f, 0.2f), blend);
-        }
-    }
-
-    private void DrawSunMarker(Vector2 center, float angle, bool isSunrise)
-    {
-        // Only draw if marker is on the visible half-circle (-PI/2 to PI/2)
-        if (angle < -Mathf.Pi / 2f || angle > Mathf.Pi / 2f)
-            return;
-
-        // Position on the circle
-        Vector2 markerPos = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * CIRCLE_RADIUS;
-
-        // Marker color - orange/yellow for sunrise, red/orange for sunset
-        Color markerColor = isSunrise
-            ? new Color(1f, 0.8f, 0.2f)  // Sunrise: bright yellow
-            : new Color(1f, 0.4f, 0.1f); // Sunset: orange-red
-
-        // Draw marker as a small circle
-        _circleContainer.DrawCircle(markerPos, SUN_MARKER_SIZE, markerColor);
-        _circleContainer.DrawArc(markerPos, SUN_MARKER_SIZE, 0, Mathf.Tau, 16, Colors.Black, 1.5f);
-
-        // Draw small line pointing outward to emphasize direction
-        Vector2 direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
-        Vector2 lineEnd = markerPos + direction * 12f;
-        _circleContainer.DrawLine(markerPos, lineEnd, markerColor, 2f);
-    }
-
-    private void DrawCurrentTimeIndicator(Vector2 center)
-    {
-        // Draw a small arrow or line at the top of the circle showing "current time"
-        Vector2 topPoint = center + new Vector2(0, -CIRCLE_RADIUS - 8);
-        Vector2 arrowBase = center + new Vector2(0, -CIRCLE_RADIUS);
-
-        // Draw downward-pointing triangle
-        Vector2[] triangle = {
-            topPoint,
-            arrowBase + new Vector2(-4, 0),
-            arrowBase + new Vector2(4, 0)
-        };
-
-        _circleContainer.DrawColoredPolygon(triangle, new Color(1f, 1f, 1f, 0.9f));
-        _circleContainer.DrawPolyline(triangle, Colors.Black, 1f);
     }
 }

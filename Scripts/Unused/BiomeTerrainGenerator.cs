@@ -4,21 +4,6 @@ using System.Collections.Generic;
 
 public partial class BiomeTerrainGenerator : Node3D
 {
-	// Biome definition
-	public class Biome
-	{
-		public string Name;
-		public Color TerrainColor;
-		public float MinHeight;
-		public float MaxHeight;
-		public float MinMoisture;
-		public float MaxMoisture;
-		public float MinTemperature;
-		public float MaxTemperature;
-		public string[] VegetationPrefabs;
-		public float VegetationDensity;
-	}
-
 	[Export] public int MapWidth = 200;
 	[Export] public int MapDepth = 200;
 	[Export] public float HeightScale = 30.0f;

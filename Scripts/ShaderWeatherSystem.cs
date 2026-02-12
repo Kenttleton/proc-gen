@@ -53,6 +53,10 @@ public partial class ShaderWeatherSystem : Node3D
 		_rainMesh.MaterialOverride = _rainMaterial;
 		_rainMesh.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
 		AddChild(_rainMesh);
+		if (Player != null)
+		{
+			_rainMesh.GlobalPosition = new Vector3(Player.GlobalPosition.X, Player.GlobalPosition.Y + 15, Player.GlobalPosition.Z);
+		}
 
 		// Fog volume (box around player)
 		_fogVolume = new MeshInstance3D();
@@ -65,6 +69,13 @@ public partial class ShaderWeatherSystem : Node3D
 		_fogVolume.MaterialOverride = _fogMaterial;
 		_fogVolume.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
 		AddChild(_fogVolume);
+
+		if (Player != null)
+		{
+			_fogVolume.GlobalPosition = new Vector3(Player.GlobalPosition.X, 25, Player.GlobalPosition.Z);
+		}
+
+
 
 		// Cloud plane (high above world)
 		_cloudPlane = new MeshInstance3D();
@@ -92,33 +103,6 @@ public partial class ShaderWeatherSystem : Node3D
 		AddChild(_cloudPlane);
 
 		GD.Print("Shader weather system initialized");
-	}
-
-	private void SetupDynamicSky()
-	{
-		_worldEnvironment = new WorldEnvironment();
-		var environment = new Environment();
-
-		// Use custom sky shader
-		var sky = new Sky();
-		var skyMaterial = new ShaderMaterial();
-		skyMaterial.Shader = GD.Load<Shader>("res://Shaders/dynamic_sky.gdshader");
-		sky.SkyMaterial = skyMaterial;
-
-		environment.BackgroundMode = Environment.BGMode.Sky;
-		environment.Sky = sky;
-		environment.AmbientLightSource = Environment.AmbientSource.Sky;
-
-		_worldEnvironment.Environment = environment;
-		AddChild(_worldEnvironment);
-
-		// Directional light (sun)
-		_sun = new DirectionalLight3D();
-		_sun.LightEnergy = 1.0f;
-		_sun.LightColor = Colors.White;
-		_sun.RotationDegrees = new Vector3(-45, 30, 0);
-		_sun.ShadowEnabled = true;
-		AddChild(_sun);
 	}
 
 	public override void _Process(double delta)
@@ -166,7 +150,13 @@ public partial class ShaderWeatherSystem : Node3D
 			_fogVolume.GlobalPosition = new Vector3(playerPos.X, 25, playerPos.Z);
 		}
 
-		// Clouds don't need to follow (they're huge)
+		if (_cloudPlane != null)
+		{
+			Vector3 cloudPos = _cloudPlane.GlobalPosition;
+			cloudPos.X = playerPos.X;
+			cloudPos.Z = playerPos.Z;
+			_cloudPlane.GlobalPosition = cloudPos;
+		}
 	}
 
 	private void UpdateShaderParameters()
@@ -203,6 +193,8 @@ public partial class ShaderWeatherSystem : Node3D
 	// Public methods to control weather
 	public void SetWeather(WeatherType weather)
 	{
+		GD.Print($"Weather changing to: {weather}");
+
 		switch (weather)
 		{
 			case WeatherType.Clear:

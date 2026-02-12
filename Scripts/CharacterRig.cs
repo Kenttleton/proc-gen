@@ -578,43 +578,25 @@ public partial class CharacterRig : Node3D
         area.CollisionLayer = HitboxLayer;
         area.CollisionMask = HitboxMask;
         area.Monitorable = true;
-        area.Monitoring = false;  // Disabled by default, enabled during attack animations
+        area.Monitoring = false;
 
         HitboxesRoot.AddChild(area);
 
         var collisionShape = new CollisionShape3D();
 
-        // For weapons, we might want more precise collision
-        // Try convex first, fall back to simplified shape if needed
-        Shape3D shape = mesh.Mesh.CreateConvexShape();
-
-        if (shape == null)
-        {
-            // Fallback: create a capsule aligned with weapon
-            Aabb aabb = mesh.GetAabb();
-            float height = aabb.Size.Y; // Assume weapon is vertical
-            float radius = Mathf.Max(aabb.Size.X, aabb.Size.Z) * 0.5f;
-
-            var capsule = new CapsuleShape3D();
-            capsule.Height = height;
-            capsule.Radius = radius;
-            shape = capsule;
-
-            if (EnableDebugOutput)
-                GD.Print($"CharacterRig: Using fallback capsule for {mesh.Name}");
-        }
+        Shape3D shape = CreateBoxWeaponHitbox(mesh, slot);
 
         collisionShape.Shape = shape;
         area.AddChild(collisionShape);
 
         // Match transform to weapon mesh
         area.GlobalTransform = mesh.GlobalTransform;
+        area.RotateY(Mathf.Pi / 2); // Rotate to align with forward direction
 
-        // Create debug visualization
         MeshInstance3D debugMesh = null;
         if (ShowHitboxes)
         {
-            debugMesh = CreateDebugMesh(mesh, new Color(0, 1, 0, 0.3f)); // Green semi-transparent
+            debugMesh = CreateDebugMesh(mesh, new Color(0, 1, 0, 0.3f));
             area.AddChild(debugMesh);
         }
 
@@ -633,7 +615,84 @@ public partial class CharacterRig : Node3D
         HitboxesBySlot[slot].Add(data);
 
         if (EnableDebugOutput)
-            GD.Print($"CharacterRig: Created hitbox for weapon {mesh.Name} in slot {slot}");
+            GD.Print($"CharacterRig: Created swept hitbox for weapon {mesh.Name} in slot {slot}");
+    }
+
+    private Shape3D CreateSweptWeaponHitbox(MeshInstance3D weaponMesh, EquipmentSlot slot)
+    {
+        // Get weapon bounds
+        Aabb weaponAabb = weaponMesh.GetAabb();
+
+        // Find the hand bone attachment for this slot
+        BoneAttachment3D handAttachment = null;
+
+        if (slot == EquipmentSlot.RightHand && RightHandSlotPath != null)
+            handAttachment = GetNodeOrNull<BoneAttachment3D>(RightHandSlotPath);
+        else if (slot == EquipmentSlot.LeftHand && LeftHandSlotPath != null)
+            handAttachment = GetNodeOrNull<BoneAttachment3D>(LeftHandSlotPath);
+
+        // Calculate hitbox dimensions
+        float weaponLength = weaponAabb.Size.Length(); // Total length of weapon
+        float weaponThickness = Mathf.Min(weaponAabb.Size.X, weaponAabb.Size.Z);
+
+        // Estimate arm length from skeleton
+        float armLength = 0.6f; // Default estimate
+        if (Skeleton != null && handAttachment != null)
+        {
+            // Try to get actual arm length from skeleton
+            int handBone = Skeleton.FindBone(handAttachment.BoneName);
+            if (handBone != -1)
+            {
+                int shoulderBone = Skeleton.GetBoneParent(handBone);
+                if (shoulderBone != -1)
+                {
+                    // Calculate distance from shoulder to hand
+                    Transform3D shoulderTransform = Skeleton.GetBoneGlobalPose(shoulderBone);
+                    Transform3D handTransform = Skeleton.GetBoneGlobalPose(handBone);
+                    armLength = shoulderTransform.Origin.DistanceTo(handTransform.Origin);
+                }
+            }
+        }
+
+        // Create capsule that covers full swing arc
+        // Height = arm length + weapon length (full reach)
+        // Radius = weapon thickness + swing arc allowance
+        var capsule = new CapsuleShape3D();
+        capsule.Height = armLength + weaponLength;
+        capsule.Radius = Mathf.Max(weaponThickness * 0.5f, 0.15f); // Minimum 15cm radius
+
+        // Adjust radius for swing arc (weapons swing in an arc, not straight line)
+        capsule.Radius *= 1.5f; // 50% wider to account for arc
+
+        if (EnableDebugOutput)
+        {
+            GD.Print($"  Swept hitbox: Height={capsule.Height:F2} (arm={armLength:F2} + weapon={weaponLength:F2}), Radius={capsule.Radius:F2}");
+        }
+
+        return capsule;
+    }
+
+    private Shape3D CreateBoxWeaponHitbox(MeshInstance3D weaponMesh, EquipmentSlot slot)
+    {
+        Aabb weaponAabb = weaponMesh.GetAabb();
+
+        // Estimate reach including arm
+        float armReach = 0.6f; // Approximate arm length
+        float weaponLength = weaponAabb.Size.Y; // Assume weapon extends along Y axis
+
+        float totalReach = armReach + weaponLength;
+        float swingWidth = totalReach * 0.8f; // Arc width
+        float hitboxThickness = Mathf.Max(weaponAabb.Size.X, weaponAabb.Size.Z) * 1.5f;
+
+        var box = new BoxShape3D();
+        box.Size = new Vector3(swingWidth, hitboxThickness, totalReach);
+
+        if (EnableDebugOutput)
+        {
+            GD.Print($"  Box hitbox: Size={box.Size}");
+        }
+
+        return box;
     }
 
     /// <summary>
@@ -759,29 +818,74 @@ public partial class CharacterRig : Node3D
 
     public override void _Process(double delta)
     {
-        UpdateHurtboxTransforms();
-        UpdateHitboxTransforms();
+        // UpdateHurtboxTransforms();
+        // UpdateHitboxTransforms();
     }
 
     private void UpdateHurtboxTransforms()
     {
-        foreach (var partList in HurtboxesByPart.Values)
+        var partsCopy = new List<BodyPart>(HurtboxesByPart.Keys);
+
+        foreach (var part in partsCopy)
         {
-            foreach (var data in partList)
+            if (!HurtboxesByPart.ContainsKey(part))
+                continue;
+
+            var dataList = new List<HurtboxData>(HurtboxesByPart[part]);
+
+            foreach (var data in dataList)
             {
-                // Match the area's transform to the source mesh's current transform
-                data.Area.GlobalTransform = data.SourceMesh.GlobalTransform;
+                // FIX: Check if nodes are still valid
+                if (!IsInstanceValid(data.Area) || !IsInstanceValid(data.SourceMesh))
+                {
+                    // Remove invalid data
+                    HurtboxesByPart[part].Remove(data);
+                    continue;
+                }
+
+                try
+                {
+                    // Match the area's transform to the source mesh's current transform
+                    data.Area.GlobalTransform = data.SourceMesh.GlobalTransform;
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Object was disposed between check and use
+                    HurtboxesByPart[part].Remove(data);
+                    GD.PushWarning($"CharacterRig: Hurtbox for {part} was disposed");
+                }
             }
         }
     }
 
     private void UpdateHitboxTransforms()
     {
-        foreach (var slotList in HitboxesBySlot.Values)
+        var slotsCopy = new List<EquipmentSlot>(HitboxesBySlot.Keys);
+
+        foreach (var slot in slotsCopy)
         {
-            foreach (var data in slotList)
+            if (!HitboxesBySlot.ContainsKey(slot))
+                continue;
+
+            var dataList = new List<HitboxData>(HitboxesBySlot[slot]);
+
+            foreach (var data in dataList)
             {
-                data.Area.GlobalTransform = data.SourceMesh.GlobalTransform;
+                if (!IsInstanceValid(data.Area) || !IsInstanceValid(data.SourceMesh))
+                {
+                    HitboxesBySlot[slot].Remove(data);
+                    continue;
+                }
+
+                try
+                {
+                    data.Area.GlobalTransform = data.SourceMesh.GlobalTransform;
+                }
+                catch (ObjectDisposedException)
+                {
+                    HitboxesBySlot[slot].Remove(data);
+                    GD.PushWarning($"CharacterRig: Hitbox for {slot} was disposed");
+                }
             }
         }
     }
