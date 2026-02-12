@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using Godot;
-public class LoadedChunk
+public class RenderedChunk
 {
     public Vector2I ChunkCoord;
     public MeshInstance3D MeshInstance;

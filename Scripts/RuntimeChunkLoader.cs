@@ -5,23 +5,30 @@ using System.Linq;
 
 public partial class RuntimeChunkLoader : Node3D
 {
-	public int Count => _loadedChunks.Count;
-	private Node3D Player;
-	private WorldGenerator WorldGenerator;
-	private int RenderDistanceChunks;
-	private float UpdateInterval;
 	public WorldData WorldData;
-	private Dictionary<Vector2I, LoadedChunk> _loadedChunks = new();
+
+	public Node3D Player;
 	public Vector2I LastPlayerChunk = new Vector2I(int.MaxValue, int.MaxValue);
+
+	public int InMemoryRadiusChunks;
+	public int AIRadiusChunks;
+	public int RenderRadiusChunks;
+	public float UpdateInterval;
+
+	public Dictionary<Vector2I, ChunkData> InMemoryChunks = new();
+	public List<Vector2I> AIChunks = new();
+	public Dictionary<Vector2I, RenderedChunk> RenderedChunks = new();
+
 	private float _updateTimer = 0.0f;
 	private ShaderMaterial _terrainMaterial;
 	private PropSpawner _propSpawner;
 
-	public RuntimeChunkLoader(WorldData worldData, Node3D player, int renderDistanceChunks, float updateInterval)
+	public RuntimeChunkLoader(Node3D player, int inMemoryRadiusChunks, int airadiusChunks, int renderRadiusChunks, float updateInterval)
 	{
 		Player = player;
-		WorldData = worldData;
-		RenderDistanceChunks = renderDistanceChunks;
+		InMemoryRadiusChunks = inMemoryRadiusChunks;
+		AIRadiusChunks = airadiusChunks;
+		RenderRadiusChunks = renderRadiusChunks;
 		UpdateInterval = updateInterval;
 	}
 
@@ -33,7 +40,7 @@ public partial class RuntimeChunkLoader : Node3D
 			return;
 		}
 
-		if (WorldData == null || WorldData.Chunks.Count == 0)
+		if (WorldData == null)
 		{
 			GD.PrintErr("No world data available! Generate world first.");
 			return;
@@ -45,68 +52,91 @@ public partial class RuntimeChunkLoader : Node3D
 		_propSpawner = new PropSpawner();
 		_propSpawner.PropDefinitions = LoadPropDefinitions();
 		AddChild(_propSpawner);
-		// Initial load
-		UpdateVisibleChunks(true);
+		UpdateInMemoryChunks();
+		UpdateAIChunks();
+		UpdateRenderedChunks();
 	}
 
 	public override void _Process(double delta)
 	{
 		_updateTimer += (float)delta;
-
 		if (_updateTimer >= UpdateInterval)
 		{
 			_updateTimer = 0.0f;
-			UpdateVisibleChunks(true);
+			// MUST update player location for chunk calculations before updating chunks
+			LastPlayerChunk = WorldOffsetToChunkCoord(Player.GlobalPosition);
+			UpdateInMemoryChunks();
+			UpdateAIChunks();
+			UpdateRenderedChunks();
 		}
-		UpdateVisibleChunks();
 	}
 
-	private void UpdateVisibleChunks(bool forceUpdate = false)
+	public void UpdateInMemoryChunks()
 	{
-		Vector2I playerChunk = WorldToChunkCoord(Player.GlobalPosition);
-
-		if (playerChunk == LastPlayerChunk && !forceUpdate)
-			return;
-
-		LastPlayerChunk = playerChunk;
-
-		// Determine which chunks should be visible
-		var chunksToLoad = new HashSet<Vector2I>();
-
-		for (int z = -RenderDistanceChunks; z <= RenderDistanceChunks; z++)
+		for (int z = -InMemoryRadiusChunks; z <= InMemoryRadiusChunks; z++)
 		{
-			for (int x = -RenderDistanceChunks; x <= RenderDistanceChunks; x++)
+			for (int x = -InMemoryRadiusChunks; x <= InMemoryRadiusChunks; x++)
 			{
-				// Circular render distance
-				if (new Vector2(x, z).Length() <= RenderDistanceChunks)
+				Vector2I chunkCoord = LastPlayerChunk + new Vector2I(x, z);
+				if (new Vector2(x, z).Length() <= InMemoryRadiusChunks)
 				{
-					Vector2I chunkCoord = playerChunk + new Vector2I(x, z);
-
-					// Only add if chunk exists in world data
-					if (WorldData.Chunks.ContainsKey(chunkCoord))
+					if (!InMemoryChunks.ContainsKey(chunkCoord))
 					{
-						chunksToLoad.Add(chunkCoord);
+						// TODO: read chunk data from disk if not already in memory, then add to InMemoryChunks
+						InMemoryChunks[chunkCoord] = null;
+					}
+				}
+				// Unload chunks that are now out of range
+				else if (InMemoryChunks.ContainsKey(chunkCoord))
+				{
+					InMemoryChunks.Remove(chunkCoord);
+				}
+			}
+		}
+	}
+
+	public void UpdateAIChunks()
+	{
+		for (int z = -AIRadiusChunks; z <= AIRadiusChunks; z++)
+		{
+			for (int x = -AIRadiusChunks; x <= AIRadiusChunks; x++)
+			{
+				if (new Vector2(x, z).Length() <= AIRadiusChunks)
+				{
+					Vector2I chunkCoord = LastPlayerChunk + new Vector2I(x, z);
+					if (!AIChunks.Contains(chunkCoord) && InMemoryChunks.ContainsKey(chunkCoord))
+					{
+						var inMemChunk = InMemoryChunks[chunkCoord];
+						AIChunks.Add(chunkCoord);
+						// TODO: initialize AI systems for this chunk (e.g. spawn enemies, fast forward pathfinding, etc.)
 					}
 				}
 			}
 		}
+	}
 
-		// Load new chunks
-		foreach (var coord in chunksToLoad)
-		{
-			if (!_loadedChunks.ContainsKey(coord))
-			{
-				LoadChunk(coord);
-			}
-		}
-
-		// Unload distant chunks
+	private void UpdateRenderedChunks()
+	{
 		var chunksToUnload = new List<Vector2I>();
-		foreach (var coord in _loadedChunks.Keys)
+		for (int z = -RenderRadiusChunks; z <= RenderRadiusChunks; z++)
 		{
-			if (!chunksToLoad.Contains(coord))
+			for (int x = -RenderRadiusChunks; x <= RenderRadiusChunks; x++)
 			{
-				chunksToUnload.Add(coord);
+				Vector2I chunkCoord = LastPlayerChunk + new Vector2I(x, z);
+				if (new Vector2(x, z).Length() <= RenderRadiusChunks)
+				{
+					if (!RenderedChunks.ContainsKey(chunkCoord) && InMemoryChunks.ContainsKey(chunkCoord))
+					{
+						var renderedChunk = RenderChunk(InMemoryChunks[chunkCoord]);
+						RenderedChunks.Add(chunkCoord, renderedChunk);
+					}
+					if (!InMemoryChunks.ContainsKey(chunkCoord))
+						GD.PrintErr($"Chunk {chunkCoord} is being rendered but is not in memory!");
+				}
+				else if (RenderedChunks.ContainsKey(chunkCoord))
+				{
+					chunksToUnload.Add(chunkCoord);
+				}
 			}
 		}
 
@@ -116,36 +146,15 @@ public partial class RuntimeChunkLoader : Node3D
 		}
 	}
 
-	private Vector2I WorldToChunkCoord(Vector3 worldPos)
+
+
+	private RenderedChunk RenderChunk(ChunkData chunkData)
 	{
-		int chunkX = Mathf.FloorToInt(worldPos.X / (WorldData.ChunkSize.X - 1)); // -1 to match generation logic
-		int chunkZ = Mathf.FloorToInt(worldPos.Z / (WorldData.ChunkSize.Y - 1)); // -1 to match generation logic
-		return new Vector2I(chunkX, chunkZ);
-	}
+		Vector2I worldOffset = ChunkCoordToWorldOffset(chunkData.ChunkCoord);
 
-	private Vector2I ChunkCoordToWorldOffset(Vector2I chunkCoord)
-	{
-		int worldOffsetX = chunkCoord.X * (WorldData.ChunkSize.X - 1); // -1 to prevent gaps between chunks
-		int worldOffsetZ = chunkCoord.Y * (WorldData.ChunkSize.Y - 1); // -1 to prevent gaps between chunks
-		return new Vector2I(worldOffsetX, worldOffsetZ);
-	}
-
-	private void LoadChunk(Vector2I chunkCoord)
-	{
-		if (!WorldData.Chunks.TryGetValue(chunkCoord, out var chunkData))
-		{
-			GD.PrintErr($"Chunk {chunkCoord} not found in world data!");
-			return;
-		}
-
-		// Calculate world offset for chunk position
-		Vector2I worldOffset = ChunkCoordToWorldOffset(chunkCoord);
-
-		// Create mesh from pre-computed data
 		var surfaceTool = new SurfaceTool();
 		surfaceTool.Begin(Mesh.PrimitiveType.Triangles);
 
-		// Add all vertices with their data
 		for (int i = 0; i < chunkData.Vertices.Length; i++)
 		{
 			surfaceTool.SetNormal(chunkData.Normals[i]);
@@ -164,7 +173,7 @@ public partial class RuntimeChunkLoader : Node3D
 		// Create mesh instance
 		var meshInstance = new MeshInstance3D();
 		meshInstance.Mesh = mesh;
-		meshInstance.Name = $"Chunk_{chunkCoord.X}_{chunkCoord.Y}";
+		meshInstance.Name = $"Chunk_{chunkData.ChunkCoord.X}_{chunkData.ChunkCoord.Y}";
 		meshInstance.Position = new Vector3(worldOffset.X, 0, worldOffset.Y);
 		meshInstance.MaterialOverride = _terrainMaterial;
 		meshInstance.CastShadow = GeometryInstance3D.ShadowCastingSetting.On;
@@ -197,7 +206,7 @@ public partial class RuntimeChunkLoader : Node3D
 		bool hasExistingProps = chunkData.Props.Count > 0;
 		var (propsNode, props) = _propSpawner.SpawnPropsForChunk(
 			chunkData,
-			chunkCoord,
+			chunkData.ChunkCoord,
 			WorldData.ChunkSize,
 			WorldData.Seed,
 			hasExistingProps
@@ -209,24 +218,22 @@ public partial class RuntimeChunkLoader : Node3D
 		}
 
 		meshInstance.AddChild(propsNode);
-
-		_loadedChunks[chunkCoord] = new LoadedChunk
+		return new RenderedChunk
 		{
-			ChunkCoord = chunkCoord,
-			Body = staticBody,
+			ChunkCoord = chunkData.ChunkCoord,
 			MeshInstance = meshInstance,
+			Body = staticBody,
 			CollisionShape = collisionShape,
-			Props = props
+			Props = chunkData.Props
 		};
-		//GD.Print($"[LOAD] Chunk {chunkCoord}: worldOffset = ({worldOffsetX}, {worldOffsetZ}), ChunkSize = ({WorldData.ChunkSize.X}, {WorldData.ChunkSize.Y})");
 	}
 
 	private void UnloadChunk(Vector2I chunkCoord)
 	{
-		if (_loadedChunks.TryGetValue(chunkCoord, out var chunk))
+		if (RenderedChunks.TryGetValue(chunkCoord, out var chunk))
 		{
 			chunk.Body.QueueFree();
-			_loadedChunks.Remove(chunkCoord);
+			RenderedChunks.Remove(chunkCoord);
 		}
 	}
 
@@ -288,11 +295,11 @@ public partial class RuntimeChunkLoader : Node3D
 		Vector2[] nearest = [];
 		string[] types = [];
 
-		foreach (var chunk in _loadedChunks.Values)
+		foreach (var chunk in RenderedChunks.Values)
 		{
-			if (!WorldData.Chunks.TryGetValue(chunk.ChunkCoord, out var chunkData))
+			if (!InMemoryChunks.TryGetValue(chunk.ChunkCoord, out var chunkData))
 			{
-				GD.PrintErr($"Chunk {chunk.ChunkCoord} not found in world data!");
+				GD.PrintErr($"Chunk {chunk.ChunkCoord} not found in memory!");
 				return (nearest, types);
 			}
 

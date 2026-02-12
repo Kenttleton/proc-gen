@@ -1,5 +1,4 @@
 using Godot;
-using System;
 
 public partial class World : Node3D
 {
@@ -21,44 +20,31 @@ public partial class World : Node3D
 	[Export] public float NoiseScale = 0.02f;
 
 	[ExportGroup("Generation")]
-	[Export] public string WorldDataPath = "res://Data/World/Data.bin";
+	[Export] public string WorldMetadataPath = "res://Data/world_data/world_metadata.dat";
+	[Export] public string WorldDataLookupPath = "res://Data/world_data/world_lookup.dat";
 
 	[ExportGroup("Player Settings")]
 	[Export] public CharacterBody3D Player;
 
 	[ExportGroup("Render Settings")]
 	[Export] public float UpdateInterval = 0.5f;
-	[Export] public int RenderDistanceChunks = 5;
-	[Export] public int AIDinstanceChunks = 7;
-	[Export] public int MemoryDistanceChunks = 10;
+	[Export] public int RenderRadiusChunks = 5;
+	[Export] public int AIRadiusChunks = 7;
+	[Export] public int InMemoryRadiusChunks = 10;
 
 	[ExportGroup("Debug")]
 	[Export] public bool ShowDebugInfo = false;
-
-	private RegionGenerator _generator;
 	private RuntimeChunkLoader _chunkLoader;
+	private WorldData _worldData;
+
 	private DebugUI _debugUI;
 	private Label _debugLabel = new Label();
 
-	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
 	{
-		// Create world generator
-		_generator = new RegionGenerator(
-			Seed,
-			new Vector2I(WorldNumChunksX, WorldNumChunksY),
-			new Vector2I(ChunkSizeX, ChunkSizeY),
-			HeightScale,
-			NoiseScale,
-			WorldDataPath);
-
-		_generator.LoadWorldData();
-
-		GD.Print($"WorldGenerator initialized with Seed: {Seed}, World Size: {_generator.WorldSizeChunks.X}x{_generator.WorldSizeChunks.Y} chunks, Chunk Size: {_generator.ChunkSize.X}x{_generator.ChunkSize.Y}, Height Scale: {HeightScale}, Noise Scale: {NoiseScale}, Generate: {RegenerateWorld}");
-
-		Player.Position = _generator.WorldData.PlayerStartPosition;
-
-		_chunkLoader = new RuntimeChunkLoader(_generator.WorldData, Player, RenderDistanceChunks, UpdateInterval);
+		GetWorldMetadata();
+		_chunkLoader = new RuntimeChunkLoader(Player, InMemoryRadiusChunks, AIRadiusChunks, RenderRadiusChunks, UpdateInterval);
+		_chunkLoader.WorldData = _worldData;
 		AddChild(_chunkLoader);
 
 		var dayNightCycleManager = new DayNightCycleManager();
@@ -80,8 +66,9 @@ public partial class World : Node3D
 
 		GD.Print($"=== World Initialization Complete ===");
 		GD.Print($"  Time: {dayNightCycleManager.GetTimeString()}, Weather initialized.");
-		GD.Print($"  World Size: {_generator.WorldData?.WorldSizeChunks.X ?? 0}x{_generator.WorldData?.WorldSizeChunks.Y ?? 0}");
-		GD.Print($"  Total World Chunks: {_generator.WorldData.WorldSizeChunks.X * _generator.WorldData.WorldSizeChunks.Y}");
+		GD.Print($"  Total World Chunks: {_chunkLoader.WorldData.WorldSizeChunks.X * _chunkLoader.WorldData.WorldSizeChunks.Y}");
+		GD.Print($"  World Size: {_chunkLoader.WorldData.WorldSizeChunks.X * _chunkLoader.WorldData.ChunkSize.X}x{_chunkLoader.WorldData.WorldSizeChunks.Y * _chunkLoader.WorldData.ChunkSize.Y} meters");
+
 		_debugUI = new DebugUI();
 		_debugUI.CreateDebugUI(_debugLabel, HUD.Canvas);
 	}
@@ -92,8 +79,30 @@ public partial class World : Node3D
 		if (_debugLabel != null && _chunkLoader != null)
 		{
 			_debugLabel.Text = $"Player World Position: {Player.Position.Round()}\n" +
-								$"Player Chunk: {_chunkLoader.LastPlayerChunk}\nChunks Loaded: {_chunkLoader.Count}\n";
+								$"Player Chunk: {_chunkLoader.LastPlayerChunk}\nChunks Loaded: {_chunkLoader.InMemoryChunks.Count}\n";
 		}
+	}
+
+	private void GetWorldMetadata()
+	{
+		FileAccess worldMetadataFile = FileAccess.Open(WorldMetadataPath, FileAccess.ModeFlags.Read);
+		if (worldMetadataFile == null || worldMetadataFile.GetError() != Error.Ok)
+		{
+			GD.PrintErr($"Failed to open world metadata file at {WorldMetadataPath}");
+			return;
+		}
+		var worldMetadata = WorldMetadata.Deserialize(worldMetadataFile);
+		worldMetadataFile.Close();
+		var worldData = new WorldData
+		{
+			Seed = worldMetadata.Seed,
+			WorldRegions = worldMetadata.WorldRegions,
+			RegionSize = worldMetadata.RegionSize,
+			ChunkSize = worldMetadata.ChunkSize,
+			HeightScale = worldMetadata.HeightScale,
+			PlayerStartPosition = worldMetadata.PlayerStartPosition
+		};
+		_worldData = worldData;
 	}
 
 	public static T FindNodeRecursive<T>(Node parent) where T : Node
