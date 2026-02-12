@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="CharacterProportions" format=3 uid="uid://vxfef13qh4m0"]
+
+[ext_resource type="Script" uid="uid://d15lojcvpc7rl" path="res://Scripts/Models/CharacterProportions.cs" id="1_2ac78"]
+
+[resource]
+script = ExtResource("1_2ac78")
+Height = 2.0

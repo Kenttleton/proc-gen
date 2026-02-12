@@ -16,6 +16,9 @@ public partial class CharacterRig : Node3D
     [Export] public bool ShowHurtboxes = false;
     [Export] public bool ShowHitboxes = false;
 
+    [ExportGroup("Size Constraints")]
+    [Export] public float MaxHeight = 2.0f;
+
     [ExportGroup("Animation")]
     [Export] public NodePath AnimationPlayerPath;
     [Export] public NodePath AnimationTreePath;
@@ -133,6 +136,7 @@ public partial class CharacterRig : Node3D
 
     public override void _Ready()
     {
+        ClampHeight(MaxHeight);
         CacheNodes();
         CacheEquipment();
         CacheAnimations();
@@ -155,6 +159,44 @@ public partial class CharacterRig : Node3D
             result.AddRange(GetChildrenRecursive<T>(child));
         }
         return result;
+    }
+
+    public void ClampHeight(float maxHeight = 2f)
+    {
+        var meshes = GetChildrenRecursive<MeshInstance3D>(this);
+
+        if (meshes.Count == 0)
+            return;
+
+        Aabb? combinedAabb = null;
+
+        foreach (var mesh in meshes)
+        {
+            // Get mesh AABB in its own local space
+            Aabb localAabb = mesh.GetAabb();
+
+            // Transform to global space, then to collider parent's space
+            Transform3D meshToGlobal = mesh.GlobalTransform;
+
+            Aabb transformedAabb = TransformAabb(localAabb, meshToGlobal);
+
+            if (combinedAabb == null)
+            {
+                combinedAabb = transformedAabb;
+            }
+            else
+            {
+                combinedAabb = combinedAabb.Value.Merge(transformedAabb);
+            }
+        }
+
+        float height = combinedAabb.Value.Size.Y;
+
+        if (height > maxHeight)
+        {
+            float factor = maxHeight / height;
+            this.Scale *= factor;
+        }
     }
 
     #region Movement Capsule Auto-Sizing

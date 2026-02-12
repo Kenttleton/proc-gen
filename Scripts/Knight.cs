@@ -22,14 +22,15 @@ public partial class Knight : CharacterRig
 	{
 		base._Ready();
 		// Load character loadout (for now, hardcoded to "Knight")
-		var loadout = ResourceLoader.Load<CharacterLoadout>("res://Data/CharacterLoadouts/KnightLoadout.tres");
+		var loadout = ResourceLoader.Load<CharacterLoadout>("res://Data/Characters/KnightLoadout.tres");
 		if (loadout != null)
 		{
 			ApplyLoadout(loadout);
 		}
-		else
+		var proportions = ResourceLoader.Load<CharacterProportions>("res://Data/Characters/KnightProportions.tres");
+		if (proportions != null)
 		{
-			GD.PrintErr("Failed to load Knight loadout!");
+			MaxHeight = proportions.Height;
 		}
 	}
 }

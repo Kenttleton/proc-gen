@@ -1,0 +1,26 @@
+[gd_scene format=3 uid="uid://dsehpe807m4am"]
+
+[ext_resource type="Script" uid="uid://dkiv0vxk0d183" path="res://Scripts/UI/SplashScreen.cs" id="1_acvwv"]
+
+[node name="SplashScreen" type="Control" unique_id=614641684]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("1_acvwv")
+
+[node name="Background" type="ColorRect" parent="." unique_id=192698409]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+color = Color(0, 0, 0, 1)
+
+[node name="CenterContainer" type="CenterContainer" parent="." unique_id=1216552331]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+use_top_left = true
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer" unique_id=1206624597]
+layout_mode = 2
+alignment = 1

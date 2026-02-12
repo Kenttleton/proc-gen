@@ -1,0 +1,55 @@
+[gd_scene format=3 uid="uid://o44nwcvrods5"]
+
+[ext_resource type="Script" uid="uid://c055wlpi2n6yy" path="res://Scripts/UI/MainMenu.cs" id="1_tt5f1"]
+
+[node name="MainMenu" type="Control" unique_id=614641684]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("1_tt5f1")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=2070844731]
+layout_mode = 1
+offset_right = 93.0
+offset_bottom = 163.0
+
+[node name="MainMenu" type="Label" parent="VBoxContainer" unique_id=1416768381]
+layout_mode = 2
+text = "Main Menu"
+horizontal_alignment = 1
+
+[node name="NewGameButton" type="Button" parent="VBoxContainer" unique_id=1693210677]
+layout_mode = 2
+text = "New Game"
+
+[node name="ContinueButton" type="Button" parent="VBoxContainer" unique_id=1525944331]
+layout_mode = 2
+text = "Continue"
+
+[node name="SettingsButton" type="Button" parent="VBoxContainer" unique_id=910168538]
+layout_mode = 2
+text = "Settings"
+
+[node name="QuitButton" type="Button" parent="VBoxContainer" unique_id=1463352050]
+layout_mode = 2
+text = "Quit"
+
+[node name="GenerationOverlay" type="Panel" parent="." unique_id=1078575604]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="GenerationOverlay" unique_id=733716323]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="ProgressLabel" type="Label" parent="GenerationOverlay/VBoxContainer" unique_id=1123590783]
+layout_mode = 2
+
+[node name="ProgressBar" type="ProgressBar" parent="GenerationOverlay/VBoxContainer" unique_id=314460384]
+layout_mode = 2
+
+[node name="ProgressStatus" type="Label" parent="GenerationOverlay/VBoxContainer" unique_id=2054037166]
+layout_mode = 2

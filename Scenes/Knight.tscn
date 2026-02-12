@@ -1,8 +1,8 @@
 [gd_scene format=3 uid="uid://cbdh3u1n160kn"]
 
-[ext_resource type="PackedScene" uid="uid://sixthr6dij7m" path="res://addons/kaykit_character_pack_adventures/Characters/gltf/Knight.glb" id="1_gb5m4"]
+[ext_resource type="PackedScene" uid="uid://cwql6vujy625d" path="res://addons/kaykit_character_pack_adventures/Characters/gltf/Knight.glb" id="1_gb5m4"]
 [ext_resource type="Script" uid="uid://g2h4b2y57v4i" path="res://Scripts/Knight.cs" id="2_sv1xq"]
-[ext_resource type="Resource" uid="uid://bv84g2tj8ui0q" path="res://Data/CharacterLoadouts/KnightLoadout.tres" id="3_x8ec4"]
+[ext_resource type="Resource" uid="uid://bv84g2tj8ui0q" path="res://Data/Characters/KnightLoadout.tres" id="3_x8ec4"]
 
 [node name="Knight" unique_id=799545041 instance=ExtResource("1_gb5m4")]
 script = ExtResource("2_sv1xq")
