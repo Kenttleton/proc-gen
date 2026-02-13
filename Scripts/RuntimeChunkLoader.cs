@@ -5,7 +5,7 @@ using System.Linq;
 
 public partial class RuntimeChunkLoader : Node3D
 {
-	public WorldData WorldData;
+	public WorldMetadata WorldData;
 
 	public Node3D Player;
 	public Vector2I LastPlayerChunk = new Vector2I(int.MaxValue, int.MaxValue);
@@ -64,7 +64,7 @@ public partial class RuntimeChunkLoader : Node3D
 		{
 			_updateTimer = 0.0f;
 			// MUST update player location for chunk calculations before updating chunks
-			LastPlayerChunk = WorldOffsetToChunkCoord(Player.GlobalPosition);
+			LastPlayerChunk = CoordinateConversion.WorldOffsetToChunkCoord(Player.GlobalPosition, WorldData.ChunkSize);
 			UpdateInMemoryChunks();
 			UpdateAIChunks();
 			UpdateRenderedChunks();
@@ -150,7 +150,7 @@ public partial class RuntimeChunkLoader : Node3D
 
 	private RenderedChunk RenderChunk(ChunkData chunkData)
 	{
-		Vector2I worldOffset = ChunkCoordToWorldOffset(chunkData.ChunkCoord);
+		Vector2I worldOffset = CoordinateConversion.ChunkCoordToWorldOffset(chunkData.ChunkCoord, WorldData.ChunkSize);
 
 		var surfaceTool = new SurfaceTool();
 		surfaceTool.Begin(Mesh.PrimitiveType.Triangles);

@@ -2,14 +2,6 @@ using Godot;
 using System;
 using System.Threading.Tasks;
 
-/// <summary>
-/// LEARNING: WorldLoader wraps WorldGenerator and provides async generation
-/// with progress callbacks. This allows the UI to stay responsive while
-/// the world generates in the background.
-/// 
-/// Key pattern: We use signals to communicate progress from worker thread
-/// back to the main thread (Godot requires UI updates on main thread).
-/// </summary>
 public partial class WorldLoader : Node
 {
 	[Signal]
@@ -38,12 +30,7 @@ public partial class WorldLoader : Node
 		{
 			// Create generator with settings
 			_generator = new WorldGenerator(
-				settings.Seed,
-				settings.WorldSizeChunks,
-				settings.ChunkSize,
-				settings.HeightScale,
-				settings.NoiseScale,
-				worldDataPath: "user://world_data/index.dat"
+				settings
 			);
 
 			// Run generation on worker thread
@@ -60,6 +47,28 @@ public partial class WorldLoader : Node
 		{
 			_isGenerating = false;
 		}
+	}
+
+	private async Task GetWorldMetadata()
+	{
+		FileAccess worldMetadataFile = FileAccess.Open(WorldMetadataPath, FileAccess.ModeFlags.Read);
+		if (worldMetadataFile == null || worldMetadataFile.GetError() != Error.Ok)
+		{
+			GD.PrintErr($"Failed to open world metadata file at {WorldMetadataPath}");
+			return;
+		}
+		var worldMetadata = WorldMetadata.Deserialize(worldMetadataFile);
+		worldMetadataFile.Close();
+		var worldData = new WorldData
+		{
+			Seed = worldMetadata.Seed,
+			WorldRegions = worldMetadata.WorldRegions,
+			RegionSize = worldMetadata.RegionSize,
+			ChunkSize = worldMetadata.ChunkSize,
+			HeightScale = worldMetadata.HeightScale,
+			PlayerStartPosition = worldMetadata.PlayerStartPosition
+		};
+		_worldData = worldData;
 	}
 
 	/// <summary>
@@ -132,16 +141,4 @@ public partial class WorldLoader : Node
 	{
 		EmitSignal(SignalName.GenerationProgress, progress, status);
 	}
-}
-
-/// <summary>
-/// Settings for world generation - makes it easy to pass around
-/// </summary>
-public class WorldGenerationSettings
-{
-	public int Seed;
-	public Vector2I WorldSizeChunks;
-	public Vector2I ChunkSize;
-	public float HeightScale;
-	public float NoiseScale;
 }

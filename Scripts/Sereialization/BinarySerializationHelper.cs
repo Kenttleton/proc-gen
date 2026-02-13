@@ -12,20 +12,22 @@ public static class BinarySerializationHelper
         Int = 2,
         Float = 3,
         Double = 4,
-        Vector3 = 5,
-        Vector2I = 6,
-        Vector2 = 7,
-        String = 8,
-        ByteArray = 9,
-        IntArray = 10,
-        FloatArray = 11,
-        Vector3Array = 12,
-        Vector2Array = 13,
+        ULong = 5,
+        UShort = 6,
+        Vector3 = 7,
+        Vector2I = 8,
+        Vector2 = 9,
+        String = 10,
+        ByteArray = 11,
+        IntArray = 12,
+        FloatArray = 13,
+        Vector3Array = 14,
+        Vector2Array = 15,
         // Compressed versions for large arrays
-        CompressedIntArray = 14,
-        CompressedFloatArray = 15,
-        CompressedVector2Array = 16,
-        CompressedVector3Array = 17
+        CompressedIntArray = 16,
+        CompressedFloatArray = 17,
+        CompressedVector2Array = 18,
+        CompressedVector3Array = 19
     }
 
     // ============= LOW-LEVEL BYTE ARRAY CONVERSIONS =============
@@ -68,6 +70,16 @@ public static class BinarySerializationHelper
     public static double BytesToDouble(byte[] bytes, int offset = 0)
     {
         return BitConverter.ToDouble(bytes, offset);
+    }
+
+    public static byte[] ULongToBytes(ulong value)
+    {
+        return BitConverter.GetBytes(value);
+    }
+
+    public static ulong BytesToULong(byte[] bytes, int offset = 0)
+    {
+        return BitConverter.ToUInt64(bytes, offset);
     }
 
     public static byte[] Vector3ToBytes(Vector3 v)

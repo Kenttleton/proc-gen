@@ -54,6 +54,14 @@ public class BinaryStreamWriter
 		_buffer.AddRange(bytes);
 	}
 
+	public void WriteULong(ulong value)
+	{
+		_buffer.Add((byte)BinarySerializationHelper.SerializationType.ULong);
+		var bytes = BinarySerializationHelper.ULongToBytes(value);
+		_buffer.Add((byte)bytes.Length);
+		_buffer.AddRange(bytes);
+	}
+
 	public void WriteVector3(Vector3 value)
 	{
 		_buffer.Add((byte)BinarySerializationHelper.SerializationType.Vector3);

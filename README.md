@@ -22,26 +22,20 @@ Why? Great question, hardware processing. By breaking down a large world into ma
 
 Measured in meters about the origin point in Euler coordinates (X, Y, Z).
 
-### Region Space
-
-Measured in chunks with the origin at the (0, 0) X, Z point. This makes regions measured pretty small <= 40 chunks in either X or Z direction.
-
 ### Chunk Space
 
 Measured in meters like the World space but the origin point is the "top left" corner of the chunk. This makes chunk space very small <= 64 meters in either X or Z directions.
+
+### Region
+
+Measured in chunks. Regions are a logical separation for story reasons. They have a minimum chunk size and the rest is randomly generated. There is 1 BossSpawn per region and 
+a minimum and maximum Dungeon placement per region. 
 
 ## Chunk Space to World Space and back
 
 This one takes a bit of math but is not that difficult. We can even pre-generate a table to get chunks based on world position which will happen A LOT.
 
 - Meters -> Chunk = Vector2I (Chunk Space)
-- Chunk -> Region = Vector2I (Region Space)
-- Region -> World = Vector2I (World Space)
-
-```
-WorldPosition.X = (Regions.X * RegionSize.X * ChunkSize.X) + ChunkSpace.X
-WorldPosition.Z = (Regions.Z * RegionSize.Z * ChunkSize.Z) + ChunkSpace.Z
-WorldPosition.Y = Height
-```
+- Chunk -> World = Vector2I (World Space)
 
 Height is always in world space since we are only chunking in the X and Z directions.

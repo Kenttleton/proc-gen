@@ -3,8 +3,8 @@ using System;
 using System.Collections.Generic;
 public class ChunkData
 {
-    // Chunk coordinate in chunk space (not world space)
     public Vector2I ChunkCoord;
+    public Vector2I WorldCoord;
     public float[] HeightData;
     public Vector3[] Vertices;
     public int[] Indices;
@@ -23,6 +23,7 @@ public class ChunkData
         var writer = new BinaryStreamWriter();
 
         writer.WriteVector2I(ChunkCoord);
+        writer.WriteVector2I(WorldCoord);
         writer.WriteFloatArray(HeightData);
         writer.WriteVector3Array(Vertices);
         writer.WriteIntArray(Indices);
@@ -60,13 +61,13 @@ public class ChunkData
         return writer.GetBytes();
     }
 
-    // Read from file
     public static ChunkData Deserialize(byte[] data)
     {
         var reader = new BinaryStreamReader(data);
         var chunk = new ChunkData();
 
         chunk.ChunkCoord = reader.ReadVector2I();
+        chunk.WorldCoord = reader.ReadVector2I();
         chunk.HeightData = reader.ReadFloatArray();
         chunk.Vertices = reader.ReadVector3Array();
         chunk.Indices = reader.ReadIntArray();

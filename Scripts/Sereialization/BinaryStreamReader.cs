@@ -168,6 +168,8 @@ public class BinaryStreamReader
 	public int ReadInt() => (int)ReadNext();
 	public float ReadFloat() => (float)ReadNext();
 	public double ReadDouble() => (double)ReadNext();
+	public ulong ReadULong() => (ulong)ReadNext();
+	public ushort ReadUShort() => (ushort)ReadNext();
 	public Vector3 ReadVector3() => (Vector3)ReadNext();
 	public Vector2 ReadVector2() => (Vector2)ReadNext();
 	public Vector2I ReadVector2I() => (Vector2I)ReadNext();

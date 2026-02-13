@@ -35,7 +35,7 @@ public partial class World : Node3D
 	[ExportGroup("Debug")]
 	[Export] public bool ShowDebugInfo = false;
 	private RuntimeChunkLoader _chunkLoader;
-	private WorldData _worldData;
+	private WorldMetadata _worldData;
 
 	private DebugUI _debugUI;
 	private Label _debugLabel = new Label();
@@ -93,11 +93,9 @@ public partial class World : Node3D
 		}
 		var worldMetadata = WorldMetadata.Deserialize(worldMetadataFile);
 		worldMetadataFile.Close();
-		var worldData = new WorldData
+		var worldData = new WorldMetadata
 		{
 			Seed = worldMetadata.Seed,
-			WorldRegions = worldMetadata.WorldRegions,
-			RegionSize = worldMetadata.RegionSize,
 			ChunkSize = worldMetadata.ChunkSize,
 			HeightScale = worldMetadata.HeightScale,
 			PlayerStartPosition = worldMetadata.PlayerStartPosition
