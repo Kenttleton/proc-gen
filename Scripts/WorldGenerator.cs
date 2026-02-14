@@ -169,6 +169,281 @@ public class WorldGenerator
 		return normal.Normalized();
 	}
 
+	// In RegionGenerator or separate POIGenerator class
+	public class POIPlacement
+	{
+		public Vector2I ChunkCoord;
+		public Vector2 IdealPosition; // From Delaunay
+		public POIType Type;
+		public TerrainPreference Preference;
+	}
+
+	public List<POIPlacement> GeneratePOILayout(RegionType region)
+	{
+		// Get all chunks in this region
+		var regionChunks = GetChunksForRegion(region);
+
+		// Use Delaunay to determine POI density and distribution
+		var poiPositions = DelaunayPOIGenerator.Generate(
+			regionChunks,
+			minDistance: 3, // chunks
+			maxDistance: 10 // chunks
+		);
+
+		// Score the distribution
+		var score = ScorePOIDistribution(poiPositions);
+
+		// Convert to POI placements with requirements
+		return poiPositions.Select(pos => new POIPlacement
+		{
+			ChunkCoord = WorldToChunk(pos),
+			IdealPosition = pos,
+			Type = DeterminePOIType(region, pos),
+			Requirements = GetRequirements(POIType)
+		}).ToList();
+	}
+
+	public class POIType
+	{
+		public string Name { get; set; }
+		public TerrainPreference Preference { get; set; }
+	}
+
+	public enum TerrainPreference
+	{
+		RequiresFlat,      // Boss arenas, towns
+		RequiresMountain,  // Dragon lairs, cliff monasteries
+		RequiresWater,     // Underwater dungeons, docks
+		RequiresValley,    // Hidden villages, ambush points
+		FlexibleAny        // Camps, resource nodes
+	}
+	#region Terrain First with Smart match
+	public void GenerateWorld()
+	{
+		foreach (var region in _regions)
+		{
+			// 1. Generate terrain features
+			var terrain = GenerateMacroTerrain(region);
+
+			// 2. Identify terrain-specific locations
+			var mountainPeaks = terrain.FindMountainPeaks();
+			var lakeBottoms = terrain.FindLakeBeds();
+			var riverBanks = terrain.FindRiverBanks();
+			var flatPlains = terrain.FindFlatAreas();
+			var valleyFloors = terrain.FindValleys();
+
+			// 3. Match POI types to terrain
+			var pois = new List<POIPlacement>();
+
+			// Mountain POIs - use Delaunay on mountain peaks only
+			var mountainPOIs = PlacePOIsWithDelaunay(
+				mountainPeaks,
+				GetPOITypesForTerrain(TerrainPreference.RequiresMountain),
+				count: CalculatePOICount(region, mountainPeaks.Count)
+			);
+			pois.AddRange(mountainPOIs);
+
+			// Water POIs - use Delaunay on underwater/coastal positions
+			var waterPOIs = PlacePOIsWithDelaunay(
+				lakeBottoms.Concat(riverBanks).ToList(),
+				GetPOITypesForTerrain(TerrainPreference.RequiresWater),
+				count: CalculatePOICount(region, lakeBottoms.Count)
+			);
+			pois.AddRange(waterPOIs);
+
+			// Plains POIs - use Delaunay on flat areas
+			var plainsPOIs = PlacePOIsWithDelaunay(
+				flatPlains,
+				GetPOITypesForTerrain(TerrainPreference.RequiresFlat),
+				count: CalculatePOICount(region, flatPlains.Count)
+			);
+			pois.AddRange(plainsPOIs);
+		}
+	}
+
+	private List<POIPlacement> PlacePOIsWithDelaunay(
+		List<Vector2> candidatePositions,
+		List<POIType> poiTypes,
+		int count)
+	{
+		if (candidatePositions.Count < count)
+		{
+			GD.Print($"Warning: Not enough suitable terrain. Requested {count}, found {candidatePositions.Count}");
+			count = candidatePositions.Count;
+		}
+
+		// Generate multiple distributions and score them
+		float bestScore = float.MinValue;
+		List<Vector2> bestPositions = null;
+
+		for (int attempt = 0; attempt < 10; attempt++)
+		{
+			// Randomly select 'count' positions from candidates
+			var selectedPositions = candidatePositions
+				.OrderBy(x => _random.Next())
+				.Take(count)
+				.ToList();
+
+			// Score using Delaunay
+			var triangulation = DelaunayTriangulation(selectedPositions);
+			var score = ScoreDistribution(selectedPositions, triangulation);
+
+			if (score > bestScore)
+			{
+				bestScore = score;
+				bestPositions = selectedPositions;
+			}
+		}
+
+		// Assign POI types to positions
+		return bestPositions.Select((pos, i) => new POIPlacement
+		{
+			Position = pos,
+			Type = poiTypes[i % poiTypes.Count],
+			ChunkCoord = WorldToChunk(pos)
+		}).ToList();
+	}
+
+	#endregion
+
+	#region Dulaunay-First with Terrain Adaptation
+	public void GenerateWorld()
+	{
+		foreach (var region in _regions)
+		{
+			// 1. Generate ideal POI distribution with Delaunay (ignoring terrain)
+			var idealPOIs = GenerateIdealPOIDistribution(region, desiredCount: 20);
+
+			// 2. Generate terrain
+			var terrain = GenerateMacroTerrain(region);
+
+			// 3. Adapt POI types to whatever terrain they landed on
+			foreach (var poi in idealPOIs)
+			{
+				var terrainType = terrain.GetTerrainTypeAt(poi.Position);
+				var slope = terrain.GetSlopeAt(poi.Position);
+				var elevation = terrain.GetElevationAt(poi.Position);
+
+				// Intelligently assign POI type based on terrain
+				poi.Type = DetermineBestPOIType(terrainType, slope, elevation, region);
+			}
+		}
+	}
+
+	private POIType DetermineBestPOIType(TerrainType terrain, float slope, float elevation, RegionType region)
+	{
+		// Mountain terrain
+		if (elevation > 100 && slope > 45)
+		{
+			return PickRandom(new[]
+			{
+			POIType.DragonLair,
+			POIType.MountainMonastery,
+			POIType.GiantCamp,
+			POIType.CliffDungeon
+		});
+		}
+
+		// Underwater
+		if (terrain == TerrainType.Water && elevation < -10)
+		{
+			return PickRandom(new[]
+			{
+			POIType.UnderwaterRuins,
+			POIType.MerfolkCity,
+			POIType.SunkenShip,
+			POIType.SeaCave
+		});
+		}
+
+		// Riverside/lakeside
+		if (terrain == TerrainType.Water || IsNearWater(poi.Position))
+		{
+			return PickRandom(new[]
+			{
+			POIType.FishingVillage,
+			POIType.Docks,
+			POIType.WaterMill,
+			POIType.Bridge
+		});
+		}
+
+		// Valley floor
+		if (elevation < 20 && slope < 15 && IsSurroundedByHighTerrain(poi.Position))
+		{
+			return PickRandom(new[]
+			{
+			POIType.HiddenVillage,
+			POIType.BanditCamp,
+			POIType.SecretGrove
+		});
+		}
+
+		// Default: flat plains
+		return PickRandom(new[]
+		{
+		POIType.Town,
+		POIType.BossArena,
+		POIType.Farm,
+		POIType.CampSite
+	});
+	}
+	#endregion
+
+	#region Hybrid Approach
+	public List<POIPlacement> GeneratePOIs(RegionType region, MacroTerrain terrain)
+	{
+		var pois = new List<POIPlacement>();
+
+		// 70% adaptive (Delaunay placement, terrain determines type)
+		var adaptivePOIs = GenerateIdealPOIDistribution(region, count: 14);
+		foreach (var poi in adaptivePOIs)
+		{
+			poi.Type = DetermineBestPOIType(terrain.GetAt(poi.Position), region);
+		}
+		pois.AddRange(adaptivePOIs);
+
+		// 30% specific (terrain-first for special features)
+		// "I NEED a dragon on a mountain peak somewhere"
+		var mountainPeaks = terrain.FindMountainPeaks();
+		if (mountainPeaks.Count > 0)
+		{
+			var dragonLair = PickBestDelaunayPosition(mountainPeaks, pois);
+			pois.Add(new POIPlacement
+			{
+				Position = dragonLair,
+				Type = POIType.DragonLair
+			});
+		}
+
+		// "I NEED an underwater dungeon if there's a lake"
+		var lakeBeds = terrain.FindDeepWater();
+		if (lakeBeds.Count > 0)
+		{
+			var underwaterDungeon = PickBestDelaunayPosition(lakeBeds, pois);
+			pois.Add(new POIPlacement
+			{
+				Position = underwaterDungeon,
+				Type = POIType.UnderwaterRuins
+			});
+		}
+
+		return pois;
+	}
+
+	private Vector2 PickBestDelaunayPosition(List<Vector2> candidates, List<POIPlacement> existingPOIs)
+	{
+		// Pick the candidate that maintains best Delaunay distribution
+		return candidates.OrderByDescending(candidate =>
+		{
+			var tempPOIs = existingPOIs.Select(p => p.Position).ToList();
+			tempPOIs.Add(candidate);
+			var triangulation = DelaunayTriangulation(tempPOIs);
+			return ScoreDistribution(tempPOIs, triangulation);
+		}).First();
+	}
+	#endregion
+
 	// public void PlaceDungeons()
 	// {
 	// 	var random = new Random(Seed);
