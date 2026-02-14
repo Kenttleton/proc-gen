@@ -8,6 +8,7 @@ public class WorldGenerator
 {
 	private WorldGenerationSettings _settings;
 	private Dictionary<Vector2I, FileMap> _worldDataLookup = new();
+	private RegionGenerator _regionGenerator;
 
 	/// <summary> 
 	/// World generation occurs once at for "New Games", then we load/save individual chunks as needed.
@@ -32,6 +33,10 @@ public class WorldGenerator
 		worldMetadata.Serialize(metadataFile);
 		metadataFile.Close();
 		DirAccess.MakeDirRecursiveAbsolute("res://Data/world_data/regions");
+		var maxLevel = 75;
+		var tutorialRadiusMin = Mathf.RoundToInt(Mathf.Sqrt(500 / Mathf.Pi));
+		var regionRadiusMin = Mathf.RoundToInt(Mathf.Sqrt(1000 / Mathf.Pi));
+		_regionGenerator = new RegionGenerator(_settings.Seed, _settings.WorldSizeChunks * _settings.ChunkSize, _settings.WorldSizeChunks, regionRadiusMin, tutorialRadiusMin, _settings.ChunkSize, maxLevel);
 	}
 
 	public async Task GenerateWorld()
@@ -39,26 +44,6 @@ public class WorldGenerator
 		GD.Print("=== Starting World Generation ===");
 		var startTime = Time.GetTicksMsec();
 		await InitializeWorldMetadata();
-
-
-		for (int regionZ = 0; regionZ < Regions.Y; regionZ++)
-		{
-			for (int regionX = 0; regionX < Regions.X; regionX++)
-			{
-				Vector2I regionCoord = new Vector2I(regionX, regionZ);
-				var chunkCoords = new List<Vector2I>();
-				for (int chunkZ = 0; chunkZ < ChunksPerRegion.Y; chunkZ++)
-				{
-					for (int chunkX = 0; chunkX < ChunksPerRegion.X; chunkX++)
-					{
-						int worldChunkX = regionX * ChunksPerRegion.X + chunkX;
-						int worldChunkZ = regionZ * ChunksPerRegion.Y + chunkZ;
-						chunkCoords.Add(new Vector2I(worldChunkX, worldChunkZ));
-					}
-				}
-				regionMap[regionCoord] = chunkCoords.ToArray();
-			}
-		}
 
 
 		int processedRegions = 0;

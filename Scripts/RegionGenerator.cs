@@ -8,104 +8,123 @@ public class RegionGenerator
     // Region settings
     public class RegionSeed
     {
-        public Vector2I Center;
+        public Vector2I Center; // In world space coordinates
         public RegionType Type;
         public float Influence;
-        public float Radius;
+        public float Radius; // In chunks
         public int MinLevel;
         public int MaxLevel;
     };
     private List<RegionSeed> _regionSeeds;
     private Vector2I _worldSize;
+    private Vector2I _worldSizeChunks;
     private Vector2I _chunkSize;
     private int _seed;
-    private Dictionary<RegionType, int> _regionSizeMin = new();
-
-    public RegionGenerator(int seed, Vector2I worldSize, Dictionary<RegionType, int> regionSizeMin, Vector2I chunkSize)
+    private int _regionRadiusMin; // In chunks
+    private int _tutorialRadiusMin; // In chunks
+    private int _maxLevel = 75;
+    public RegionGenerator(int seed, Vector2I worldSize, Vector2I worldSizeChunks, int regionRadiusMin, int tutorialRadiusMin, Vector2I chunkSize, int maxLevel)
     {
         _seed = seed;
         _worldSize = worldSize;
-        _regionSizeMin = regionSizeMin;
+        _worldSizeChunks = worldSizeChunks;
+        _regionRadiusMin = regionRadiusMin;
+        _tutorialRadiusMin = tutorialRadiusMin;
         _chunkSize = chunkSize;
+        _maxLevel = maxLevel;
         GenerateRegionSeeds();
     }
 
+    /// <summary>
+    /// Generates region seeds with a focus on creating a natural progression from a central Tutorial region to other genres. 
+    /// The Tutorial region is placed at the center of the world and has a smaller influence to ensure it covers around 500 chunks.
+    /// This is calculated into world space. Will need converted to chunk space when assigning regions to chunks.
+    /// </summary>
     public void GenerateRegionSeeds()
     {
         _regionSeeds = new List<RegionSeed>();
         var random = new Random(_seed);
 
-        // Calculate approximate region sizes
-        // 5 large regions @ 1000 chunks = 5000 chunks
-        // 1 medium region @ 500 chunks = 500 chunks
-        // Total = 5500 chunks minimum
-        // Remaining ~4500 chunks for transitions/overlap
+        var regionTypes = new List<RegionType>([.. Enum.GetValues(typeof(RegionType)).Cast<RegionType>()]);
 
-        // For a 100x100 map, we want regions spread out
-        // Use a 3x2 grid layout for the 6 regions
-
-        int gridCols = 3;
-        int gridRows = 2;
-        float cellWidth = _worldSize.X / (float)gridCols;
-        float cellHeight = _worldSize.Y / (float)gridRows;
-
-        var regionTypes = new List<RegionType>
+        // Create center points for each region type, with some random offset to avoid perfect grid layout
+        List<Vector2I> seedPositions = new List<Vector2I> { new Vector2I((int)(_worldSize.X / 2), (int)(_worldSize.Y / 2)) };
+        for (int i = 1; i < regionTypes.Count; i++)
         {
-            RegionType.Tutorial,
-            RegionType.SciFi,
-            RegionType.Fantasy,
-            RegionType.Prehistoric,
-            RegionType.Mythological,
-            RegionType.Horror
-
-        };
-
-        int regionIndex = 0;
-
-        for (int row = 0; row < gridRows; row++)
-        {
-            for (int col = 0; col < gridCols; col++)
+            var randX = random.Next((int)_regionRadiusMin, (int)(_worldSize.X - _regionRadiusMin));
+            var randY = random.Next((int)_regionRadiusMin, (int)(_worldSize.Y - _regionRadiusMin));
+            if (seedPositions.Any(pos => pos.DistanceTo(new Vector2I(randX, randY)) < _regionRadiusMin * 2))
             {
-                if (regionIndex >= regionTypes.Count)
-                    break;
+                i--; // Too close to existing seed, try again
+                continue;
+            }
+            seedPositions.Add(new Vector2I(randX, randY));
+        }
 
-                // Base center point in grid cell
-                float baseCenterX = (col + 0.5f) * cellWidth;
-                float baseCenterY = (row + 0.5f) * cellHeight;
+        // Sort seeds by distance from previous to create more natural progression (Tutorial -> SciFi -> Fantasy -> ...)
+        List<Vector2I> sortedSeeds = new List<Vector2I> { seedPositions[0] };
+        seedPositions.RemoveAt(0);
+        for (int i = 0; i < seedPositions.Count; i++)
+        {
+            var nextSeed = seedPositions.OrderBy(pos => pos.DistanceTo(sortedSeeds.Last())).First();
+            sortedSeeds.Add(nextSeed);
+            seedPositions.Remove(nextSeed);
+        }
 
-                // Add random offset (but keep within cell)
-                float offsetX = (float)(random.NextDouble() - 0.5) * cellWidth * 0.4f;
-                float offsetY = (float)(random.NextDouble() - 0.5) * cellHeight * 0.4f;
+        int levelRoundingError = _maxLevel % sortedSeeds.Count;
+        int levelRangePerRegion = (_maxLevel - levelRoundingError) / sortedSeeds.Count;
 
-                Vector2 center = new Vector2(baseCenterX + offsetX, baseCenterY + offsetY);
-
-                // Volcano gets smaller influence (will be ~500 chunks)
-                float influence = regionTypes[regionIndex] == RegionType.Tutorial ? 0.7f : 1.0f;
-
+        // Assign region seeds based on generated points, with random influence values to create more organic borders
+        for (int i = 0; i < sortedSeeds.Count; i++)
+        {
+            var newLevelRange = levelRangePerRegion;
+            if (levelRoundingError > 0)
+            {
+                newLevelRange++;
+                levelRoundingError--;
+            }
+            if (i == 0)
+            {
+                regionTypes.Remove(RegionType.Tutorial);
                 _regionSeeds.Add(new RegionSeed
                 {
-                    Center = (Vector2I)center,
-                    Type = regionTypes[regionIndex],
-                    Influence = influence
+                    Center = sortedSeeds[i],
+                    Type = RegionType.Tutorial,
+                    Radius = _tutorialRadiusMin,
+                    Influence = 1.0f,
+                    MinLevel = 1,
+                    MaxLevel = newLevelRange
                 });
-
-                regionIndex++;
+                continue;
             }
+            var regionTypeIndex = random.Next(regionTypes.Count);
+            _regionSeeds.Add(new RegionSeed
+            {
+                Center = sortedSeeds[i],
+                Type = regionTypes[regionTypeIndex],
+                Radius = _regionRadiusMin,
+                Influence = Mathf.Clamp((float)random.NextDouble(), 0.0f, 0.9f),
+                MinLevel = _regionSeeds.Last().MaxLevel,
+                MaxLevel = _regionSeeds.Last().MaxLevel + newLevelRange
+            });
+            regionTypes.RemoveAt(regionTypeIndex);
         }
 
         GD.Print("=== Region Seeds Generated ===");
         foreach (var seed in _regionSeeds)
         {
             GD.Print($"{seed.Type}: Center at ({seed.Center.X:F0}, {seed.Center.Y:F0}), " +
-                     $"Influence: {seed.Influence}");
+                     $"Influence: {seed.Influence}" +
+                     $"Level Range: {seed.MinLevel}-{seed.MaxLevel}");
         }
     }
 
     public RegionType GetRegionForChunk(Vector2I chunkCoord)
     {
-        Vector2 chunkPos = new Vector2(chunkCoord.X, chunkCoord.Y);
+        Vector2 chunkZeroPos = CoordinateConversion.ChunkCoordToWorldOffset(chunkCoord, _chunkSize);
+        Vector2 chunkPos = new Vector2(chunkZeroPos.X + _chunkSize.X / 2f, chunkZeroPos.Y + _chunkSize.Y / 2f);
 
-        float minDistance = float.MaxValue;
+        float minDistance = (_chunkSize.X > _chunkSize.Y ? _chunkSize.X : _chunkSize.Y) * _regionRadiusMin;
         RegionType closestRegion = RegionType.Tutorial;
 
         foreach (var seed in _regionSeeds)
@@ -128,11 +147,12 @@ public class RegionGenerator
 
     public float GetTransitionStrength(Vector2I chunkCoord)
     {
-        Vector2 chunkPos = new Vector2(chunkCoord.X, chunkCoord.Y);
+        Vector2 chunkZeroPos = CoordinateConversion.ChunkCoordToWorldOffset(chunkCoord, _chunkSize);
+        Vector2 chunkPos = new Vector2(chunkZeroPos.X + _chunkSize.X / 2f, chunkZeroPos.Y + _chunkSize.Y / 2f);
 
         // Find closest and second-closest regions
-        float closest = float.MaxValue;
-        float secondClosest = float.MaxValue;
+        float closest = (_chunkSize.X > _chunkSize.Y ? _chunkSize.X : _chunkSize.Y) * _regionRadiusMin;
+        float secondClosest = (_chunkSize.X > _chunkSize.Y ? _chunkSize.X : _chunkSize.Y) * _regionRadiusMin;
 
         foreach (var seed in _regionSeeds)
         {
@@ -159,12 +179,13 @@ public class RegionGenerator
 
     public RegionType GetSecondaryRegion(Vector2I chunkCoord)
     {
-        Vector2 chunkPos = new Vector2(chunkCoord.X, chunkCoord.Y);
+        Vector2 chunkZeroPos = CoordinateConversion.ChunkCoordToWorldOffset(chunkCoord, _chunkSize);
+        Vector2 chunkPos = new Vector2(chunkZeroPos.X + _chunkSize.X / 2f, chunkZeroPos.Y + _chunkSize.Y / 2f);
 
-        float closest = float.MaxValue;
-        float secondClosest = float.MaxValue;
-        RegionType closestRegion = RegionType.Forest;
-        RegionType secondClosestRegion = RegionType.Forest;
+        float closest = (_chunkSize.X > _chunkSize.Y ? _chunkSize.X : _chunkSize.Y) * _regionRadiusMin;
+        float secondClosest = (_chunkSize.X > _chunkSize.Y ? _chunkSize.X : _chunkSize.Y) * _regionRadiusMin;
+        RegionType closestRegion = RegionType.Tutorial;
+        RegionType secondClosestRegion = RegionType.Tutorial;
 
         foreach (var seed in _regionSeeds)
         {
@@ -196,9 +217,9 @@ public class RegionGenerator
             counts[type] = 0;
         }
 
-        for (int y = 0; y < _worldSize.Y; y++)
+        for (int y = 0; y < _worldSizeChunks.Y; y++)
         {
-            for (int x = 0; x < _worldSize.X; x++)
+            for (int x = 0; x < _worldSizeChunks.X; x++)
             {
                 var region = GetRegionForChunk(new Vector2I(x, y));
                 counts[region]++;
@@ -208,7 +229,7 @@ public class RegionGenerator
         GD.Print("\n=== Region Size Verification ===");
         foreach (var kvp in counts)
         {
-            bool meetsRequirement = kvp.Key == RegionType.Volcano
+            bool meetsRequirement = kvp.Key == RegionType.Tutorial
                 ? kvp.Value >= 500
                 : kvp.Value >= 1000;
 
@@ -217,60 +238,5 @@ public class RegionGenerator
         }
 
         return counts;
-    }
-
-    private void GenerateProgressionLayout()
-    {
-        _regionSeeds = new List<RegionSeed>();
-        Vector2I worldCenter = new Vector2I((int)(_worldSize.X / 2f), (int)(_worldSize.Y / 2f));
-
-        var tutorial = new RegionSeed
-        {
-            Type = RegionType.Tutorial,
-            Center = worldCenter,
-            Radius = Mathf.Sqrt(500 / Mathf.Pi),
-            MinLevel = 1,
-            MaxLevel = 10,
-            Influence = 0.7f // Smaller influence = smaller region
-        };
-        _regionSeeds.Add(tutorial);
-
-
-
-        // Assign genres to early regions
-        var earlyGenres = new[] { RegionType.Fantasy, RegionType.SciFi,
-                                  RegionType.Prehistoric, RegionType.Mythological, RegionType.Horror };
-        for (int i = 0; i < earlyRegions.Count; i++)
-        {
-            earlyRegions[i].Genre = earlyGenres[i];
-            tutorial.NeighborRegions.Add(earlyRegions[i]);
-            earlyRegions[i].NeighborRegions.Add(tutorial);
-        }
-        _regions.AddRange(earlyRegions);
-
-        // STEP 3: Place "End Game" region at edge (far from Tutorial)
-        // Level 40-50, only accessible after powering up
-        var endGame = new ProgressionRegion
-        {
-            Genre = GenreRegion.Horror, // Horror as hardest region
-            Center = worldCenter + new Vector2(_worldSize.X * 0.35f, _worldSize.Y * 0.35f),
-            Radius = CalculateRadiusForChunkCount(1200),
-            MinLevel = 40,
-            MaxLevel = 50,
-            Influence = 1.0f
-        };
-        _regions.Add(endGame);
-
-        // Connect EndGame to one Early region (creates progression path)
-        earlyRegions[0].NeighborRegions.Add(endGame);
-        endGame.NeighborRegions.Add(earlyRegions[0]);
-
-        GD.Print("=== Progression Layout Generated ===");
-        foreach (var region in _regions)
-        {
-            GD.Print($"{region.Genre} (Lvl {region.MinLevel}-{region.MaxLevel}): " +
-                     $"Center ({region.Center.X:F0}, {region.Center.Y:F0}), " +
-                     $"Neighbors: {region.NeighborRegions.Count}");
-        }
     }
 }
