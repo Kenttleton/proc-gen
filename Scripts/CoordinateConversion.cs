@@ -29,4 +29,9 @@ public class CoordinateConversion
         int worldOffsetZ = chunkCoord.Y * (chunkSize.Y - 1); // -1 to prevent gaps between chunks
         return new Vector2I(worldOffsetX, worldOffsetZ);
     }
+
+    public static float DistanceBetween(Vector2 a, Vector2 b)
+    {
+        return Mathf.Sqrt(Mathf.Pow(b.X - a.X, 2) + Mathf.Pow(b.Y - a.Y, 2));
+    }
 }

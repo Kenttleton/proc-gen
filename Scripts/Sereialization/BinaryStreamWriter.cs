@@ -192,4 +192,12 @@ public class BinaryStreamWriter
 
 		_buffer.AddRange(bytes);
 	}
+
+	public void WriteGuid(System.Guid value)
+	{
+		_buffer.Add((byte)BinarySerializationHelper.SerializationType.Guid);
+		var bytes = BinarySerializationHelper.GuidToBytes(value);
+		_buffer.Add((byte)bytes.Length);
+		_buffer.AddRange(bytes);
+	}
 }

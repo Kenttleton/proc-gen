@@ -5,6 +5,8 @@ public class ChunkData
 {
     public Vector2I ChunkCoord;
     public Vector2I WorldCoord;
+    public RegionType[] Region;
+    public float Precipitation;
     public float[] HeightData;
     public Vector3[] Vertices;
     public int[] Indices;
@@ -12,10 +14,10 @@ public class ChunkData
     public Vector2[] UVs;
     public Vector3[] CollisionFaces;
 
-    // Chunk feature data
-    public List<DungeonEntrance> DungeonEntrances = new();
-    public List<BossSpawn> BossSpawns = new();
-    public List<PropInstanceData> Props = new();
+    // POI = Points of Interest - Bosses, Towns, Dungeons, etc (big destinations).
+    public List<Placement> POI = new();
+    // POD = Points of Disinterest - Props to fill the world and harvestable resources.
+    public List<Placement> POD = new();
 
     // Write to file
     public byte[] Serialize()
@@ -31,31 +33,22 @@ public class ChunkData
         writer.WriteVector2Array(UVs);
         writer.WriteVector3Array(CollisionFaces);
 
-        writer.WriteInt(DungeonEntrances.Count);
-        foreach (var dungeon in DungeonEntrances)
+        writer.WriteInt(POI.Count);
+        foreach (var poi in POI)
         {
-            writer.WriteVector3(dungeon.Position);
-            writer.WriteVector3(dungeon.FacingDirection);
-            writer.WriteByte((byte)dungeon.Biome);
+            writer.WriteGuid(poi.ID);
+            writer.WriteVector3(poi.Position);
+            writer.WriteFloat(poi.RotationY);
+            writer.WriteVector3(poi.Scale);
         }
 
-        writer.WriteInt(BossSpawns.Count);
-        foreach (var boss in BossSpawns)
+        writer.WriteInt(POD.Count);
+        foreach (var pod in POD)
         {
-            writer.WriteVector3(boss.Position);
-            writer.WriteByte((byte)boss.BossType);
-            writer.WriteByte((byte)boss.Biome);
-        }
-
-        writer.WriteInt(Props.Count);
-        foreach (var prop in Props)
-        {
-            writer.WriteString(prop.PropName);
-            writer.WriteVector3(prop.Position);
-            writer.WriteVector3(prop.Scale);
-            writer.WriteFloat(prop.RotationY);
-            writer.WriteBool(prop.IsActive);
-            writer.WriteDouble(prop.RespawnTime);
+            writer.WriteGuid(pod.ID);
+            writer.WriteVector3(pod.Position);
+            writer.WriteFloat(pod.RotationY);
+            writer.WriteVector3(pod.Scale);
         }
 
         return writer.GetBytes();
@@ -75,37 +68,27 @@ public class ChunkData
         chunk.UVs = reader.ReadVector2Array();
         chunk.CollisionFaces = reader.ReadVector3Array();
 
-        int dungeonCount = reader.ReadInt();
-        for (int i = 0; i < dungeonCount; i++)
+        int poiCount = reader.ReadInt();
+        for (int i = 0; i < poiCount; i++)
         {
-            chunk.DungeonEntrances.Add(new DungeonEntrance(
-                reader.ReadVector3(),
-                reader.ReadVector3(),
-                (BiomeType)reader.ReadSingleByte()
-            ));
-        }
-
-        int bossCount = reader.ReadInt();
-        for (int i = 0; i < bossCount; i++)
-        {
-            chunk.BossSpawns.Add(new BossSpawn(
-                reader.ReadVector3(),
-                (BossType)reader.ReadSingleByte(),
-                (BiomeType)reader.ReadSingleByte()
-            ));
-        }
-
-        int propCount = reader.ReadInt();
-        for (int i = 0; i < propCount; i++)
-        {
-            chunk.Props.Add(new PropInstanceData
+            chunk.POI.Add(new Placement
             {
-                PropName = reader.ReadString(),
+                ID = reader.ReadGuid(),
                 Position = reader.ReadVector3(),
-                Scale = reader.ReadVector3(),
                 RotationY = reader.ReadFloat(),
-                IsActive = reader.ReadBool(),
-                RespawnTime = reader.ReadDouble()
+                Scale = reader.ReadVector3()
+            });
+        }
+
+        int podCount = reader.ReadInt();
+        for (int i = 0; i < podCount; i++)
+        {
+            chunk.POI.Add(new Placement
+            {
+                ID = reader.ReadGuid(),
+                Position = reader.ReadVector3(),
+                RotationY = reader.ReadFloat(),
+                Scale = reader.ReadVector3()
             });
         }
 

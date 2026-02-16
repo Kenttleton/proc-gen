@@ -1,10 +1,8 @@
+using System;
 using Godot;
-public class PropInstanceData
+public class PropInstanceState : Placement
 {
-    public string PropName;
-    public Vector3 Position;
-    public Vector3 Scale;
-    public float RotationY;
+    public string Name;
     public bool IsActive = true;
     public double RespawnTime = 0.0;
 }

@@ -178,4 +178,5 @@ public class BinaryStreamReader
 	public int[] ReadIntArray() => (int[])ReadNext();
 	public Vector3[] ReadVector3Array() => (Vector3[])ReadNext();
 	public Vector2[] ReadVector2Array() => (Vector2[])ReadNext();
+	public Guid ReadGuid() => (Guid)ReadNext();
 }

@@ -27,7 +27,8 @@ public static class BinarySerializationHelper
         CompressedIntArray = 16,
         CompressedFloatArray = 17,
         CompressedVector2Array = 18,
-        CompressedVector3Array = 19
+        CompressedVector3Array = 19,
+        Guid = 20
     }
 
     // ============= LOW-LEVEL BYTE ARRAY CONVERSIONS =============
@@ -231,5 +232,17 @@ public static class BinarySerializationHelper
             gzipStream.CopyTo(resultStream);
             return resultStream.ToArray();
         }
+    }
+
+    // ============= UTILITY CONVERSIONS =============
+
+    public static byte[] GuidToBytes(Guid id)
+    {
+        return id.ToByteArray();
+    }
+
+    public static Guid BytesToGuid(byte[] bytes)
+    {
+        return new Guid(bytes);
     }
 }

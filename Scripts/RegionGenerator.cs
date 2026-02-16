@@ -6,15 +6,6 @@ using System.Linq;
 public class RegionGenerator
 {
     // Region settings
-    public class RegionSeed
-    {
-        public Vector2I Center; // In world space coordinates
-        public RegionType Type;
-        public float Influence;
-        public float Radius; // In chunks
-        public int MinLevel;
-        public int MaxLevel;
-    };
     private List<RegionSeed> _regionSeeds;
     private Vector2I _worldSize;
     private Vector2I _worldSizeChunks;
@@ -32,7 +23,6 @@ public class RegionGenerator
         _tutorialRadiusMin = tutorialRadiusMin;
         _chunkSize = chunkSize;
         _maxLevel = maxLevel;
-        GenerateRegionSeeds();
     }
 
     /// <summary>
@@ -239,4 +229,36 @@ public class RegionGenerator
 
         return counts;
     }
+
+    public List<RegionSeed> GetAllRegionSeeds()
+    {
+        return _regionSeeds;
+    }
+
+    public Dictionary<RegionType, List<Vector2I>> GetAllRegions()
+    {
+        Dictionary<RegionType, List<Vector2I>> regionChunks = new Dictionary<RegionType, List<Vector2I>>();
+        for (int z = 0; z < _worldSizeChunks.Y; z++)
+        {
+            for (int x = 0; x < _worldSizeChunks.X; x++)
+            {
+                var chunkCoord = new Vector2I(x, z);
+                RegionType regionType = GetRegionForChunk(chunkCoord);
+                var list = regionChunks[regionType];
+                list.Add(chunkCoord);
+                regionChunks.Add(regionType, list);
+            }
+        }
+        return regionChunks;
+    }
 }
+
+public class RegionSeed
+{
+    public Vector2I Center; // In world space coordinates
+    public RegionType Type;
+    public float Influence;
+    public float Radius; // In chunks
+    public int MinLevel;
+    public int MaxLevel;
+};

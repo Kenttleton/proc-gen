@@ -15,7 +15,6 @@ public partial class WorldGenerationSettings : Resource
     [Export] public string WorldMetadataPath = "res://Data/world_data/world_metadata.dat";
     [Export] public string ChunkDataDirectory = "res://Data/world_data/chunks/";
     [Export] public Vector3 PlayerStartPosition;
-    [Export] public FastNoiseLite Noise;
     [Export] public float HeightScale;
     [Export] public float NoiseScale;
 }
