@@ -22,6 +22,7 @@ public partial class World : Node3D
 	[ExportGroup("Generation")]
 	[Export] public string WorldMetadataPath = "res://Data/world_data/world_metadata.dat";
 	[Export] public string WorldDataLookupPath = "res://Data/world_data/world_lookup.dat";
+	[Export] public string RegionDataPath = "res://Data/world_data/regions/";
 
 	[ExportGroup("Player Settings")]
 	[Export] public CharacterBody3D Player;
